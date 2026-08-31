@@ -298,6 +298,7 @@ function App() {
       {step==="improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>}
       {step==="generate" && <Card icon="🤖" title={loading} sub="Your prompt is being transformed into comedy…"><div className="loader"><div>🏃</div><p>Running the Prompt Olympics…</p></div></Card>}
       {step==="story" && story && <StoryCard story={story} onContinue={loadJudge} onRegenerate={()=>generate(true)} error={generationError}/>}
+      {step==="story" && !story && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved, so you can try again."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
       {step==="judge" && judgeStory && <JudgeCard story={judgeStory} vote={vote} setVote={setVote} onSubmit={submitVote}/>}
       {step==="reveal" && judgeStory && <Reveal story={judgeStory} humanAvg={humanAvg} onNext={loadJudge}/>}
       {step==="results" && story && <Results story={story} myJudged={myJudged} onAgain={playAgain} onHall={()=>setPage("leaderboard")}/>}
