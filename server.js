@@ -10,7 +10,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, "dist");
 
-const getModel = () => process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const getModel = () => {
+  // Using gemini-pro which is more widely available in v1beta
+  // Other options: gemini-pro-vision, etc.
+  return process.env.GEMINI_MODEL || "gemini-pro";
+};
 
 function geminiErrorDetails(error) {
   const status = typeof error === "object" && error && "status" in error && typeof error.status === "number"
