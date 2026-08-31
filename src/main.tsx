@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import { generateStory as generateStoryPipeline } from "./storyGeneration";
 
 type Theme = {
   id: string; title: string; premise: string; icon: string;
@@ -77,350 +78,52 @@ function promptAnalysis(prompt:string) {
   return {total, vals, maxBy};
 }
 
-const sideCharacters = ["a suspiciously confident squirrel","a pigeon wearing tiny sunglasses","an aunt who speaks only in riddles","a dramatic office printer","a very judgmental cat","a motivational banana"];
-const closers = ["Nobody mentioned this in the staff handbook.","The cat immediately demanded a promotion.","Everyone agreed this was probably not covered by the rules.","And that is why nobody trusts the lift anymore.","The next morning, it was somehow on the news.","The vending machine simply said, “Worth it.”"];
-const templates = [
-  (p:string,t:Theme,n:string)=>`${n} had one simple plan: ${p.slice(0,120)}. Unfortunately, the plan met ${sideCharacters[Math.floor(Math.random()*sideCharacters.length)]} at ${t.title.toLowerCase()}.\n\nThings escalated immediately. A completely unnecessary argument broke out, followed by a dramatic chase involving a snack, a confused bystander and one extremely confident ${n.toLowerCase()}.\n\nJust when everyone thought the situation was under control, the biggest twist arrived: nobody had actually read the instructions.\n\n${closers[Math.floor(Math.random()*closers.length)]}`,
-  (p:string,t:Theme,n:string)=>`BREAKING NEWS: ${n} has somehow become the star of ${t.title.toUpperCase()}.\n\nWitnesses say it started when ${p.slice(0,130)}. Then ${sideCharacters[Math.floor(Math.random()*sideCharacters.length)]} appeared and made everything approximately 400% worse.\n\nExperts were called. The experts immediately resigned. A nearby child offered a solution, but nobody listened because there was an important meeting happening.\n\nIn the end, ${n} solved the problem using absolutely no useful skills whatsoever.\n\n${closers[Math.floor(Math.random()*closers.length)]}`
-];
-
-const singaporeObservations = [
-  "someone immediately sent a photo to the WhatsApp group",
-  "everyone pretended to stay calm while secretly watching what happened",
-  "someone asked whether there was an SOP for this",
-  "the office group chat became more active than the actual emergency",
-  "someone's first instinct was to take a photo",
-  "one person was more concerned about whether this would affect lunch",
-  "someone said, 'Wah, jialat already'",
-  "the manager appeared with a very serious face and absolutely no useful solution",
-  "everyone stood around giving suggestions while one person actually did the work",
-  "someone asked if the situation was still considered under control",
-  "the incident somehow became a discussion about productivity",
-  "someone immediately started looking for the person responsible",
-  "the auntie nearby already knew exactly what to do",
-  "someone suggested making a committee to investigate the problem",
-  "five people gave five different solutions",
-  "nobody wanted to be the first person to touch anything",
-  "someone was already asking whether they could claim this as overtime"
-];
-
-const singlishLines = [
-  "Wah, this one jialat already.",
-  "Aiyo, how like that?",
-  "Can one lah.",
-  "Eh, don't anyhow do first.",
-  "Walao, serious ah?",
-  "Never mind, settle first.",
-  "This one confirm problem.",
-  "Steady lah."
-];
-
-const singaporePlaces = [
-  "an MRT station",
-  "a hawker centre",
-  "an HDB block",
-  "a void deck",
-  "an office pantry",
-  "a neighbourhood coffee shop",
-  "a community centre",
-  "a busy shopping mall",
-  "a kopitiam",
-  "a condominium lift"
-];
-
-const escalationEvents = [
-  "someone started giving completely unnecessary instructions",
-  "the situation somehow attracted an audience",
-  "someone misunderstood what was happening",
-  "a group chat notification interrupted the chaos",
-  "management arrived at exactly the wrong moment",
-  "someone tried to solve the problem using office equipment",
-  "a completely unrelated person became involved",
-  "someone insisted that there was a proper procedure for this",
-  "the person who caused the problem quietly disappeared",
-  "everyone suddenly became an expert"
-];
-
-const punchlines = [
-  "And somehow, this was still considered a normal Tuesday.",
-  "Nobody knew who solved the problem. Everyone agreed it was definitely not Benny.",
-  "The only thing more impressive than the disaster was how quickly it appeared in the WhatsApp group.",
-  "The problem was eventually solved. The meeting was not.",
-  "And that was how Benny became the only person in Singapore banned from using the office toilet.",
-  "Management later described the incident as a 'minor operational matter'.",
-  "The next day, someone put up a sign. Nobody followed it.",
-  "By lunchtime, the whole building had heard about it.",
-  "Benny learned an important lesson that day: never underestimate a Singaporean auntie with a mop."
-];
-
-function detectComedyAngle(prompt: string, theme: Theme) {
-  const text = prompt.toLowerCase();
-
-  if (text.includes("toilet") || text.includes("flood")) {
-    return {
-      situation: "toilet disaster",
-      angle: "treat the disaster extremely seriously while everyone else behaves absurdly"
-    };
-  }
-
-  if (text.includes("office") || text.includes("meeting")) {
-    return {
-      situation: "office chaos",
-      angle: "the organisation reacts to a ridiculous problem with unnecessarily serious corporate behaviour"
-    };
-  }
-
-  if (text.includes("mrt") || text.includes("train")) {
-    return {
-      situation: "MRT chaos",
-      angle: "everyone tries to behave normally while the situation becomes increasingly ridiculous"
-    };
-  }
-
-  if (text.includes("food") || text.includes("hawker") || text.includes("restaurant")) {
-    return {
-      situation: "food disaster",
-      angle: "people become dramatically more concerned about food than the actual emergency"
-    };
-  }
-
-  return {
-    situation: theme.title,
-    angle: "start normal and escalate the situation until it becomes completely ridiculous"
-  };
-}
-
-const comedyTemplates = [
-  function officeBreakingNews(
-    prompt: string,
-    theme: Theme,
-    name: string,
-    observation: string,
-    escalation: string,
-    punchline: string
-  ) {
-    return `BREAKING NEWS: ${name} has somehow become involved in ${theme.title.toUpperCase()}.\n\nIt started innocently enough.\n\n${name} was simply trying to ${prompt.slice(0, 120)}.\n\nThen everything went wrong.\n\n${observation}.\n\nAt first, everyone tried to remain calm.\n\nThis lasted approximately eleven seconds.\n\n${escalation}.\n\nSomeone shouted:\n\n"${singlishLines[Math.floor(Math.random() * singlishLines.length)]}"\n\nNobody knew what to do.\n\nExcept ${name}.\n\n${name} immediately did the one thing nobody expected.\n\nAbsolutely nothing.\n\nAfter several minutes of confusion, the problem somehow became even worse.\n\n${punchline}`;
-  },
-
-  function deadpan(
-    prompt: string,
-    theme: Theme,
-    name: string,
-    observation: string,
-    escalation: string,
-    punchline: string
-  ) {
-    return `${name} had a simple plan.\n\n${prompt.slice(0, 140)}.\n\nThere was only one problem.\n\nIt was a terrible plan.\n\n${observation}.\n\nNobody panicked.\n\nThis was mainly because everyone was too busy watching.\n\nThen ${escalation}.\n\n${name} looked around.\n\n"Wah, this one jialat already."\n\nNobody answered.\n\nAt this point, the situation had become too serious for normal solutions.\n\nSo naturally, someone suggested having a meeting.\n\nThe meeting lasted forty-five minutes.\n\nThe original problem was solved in three minutes.\n\n${punchline}`;
-  },
-
-  function escalation(
-    prompt: string,
-    theme: Theme,
-    name: string,
-    observation: string,
-    escalation: string,
-    punchline: string
-  ) {
-    return `Everything was normal.\n\nUntil ${name} decided to ${prompt.slice(0, 130)}.\n\nAt first, it was only a small problem.\n\nThen ${observation}.\n\nThen ${escalation}.\n\nThen someone made the mistake of saying:\n\n"Don't worry, can settle."\n\nThat was when everyone knew things were going to get worse.\n\nWithin minutes, the situation had attracted spectators, unwanted advice and at least one person who claimed to have "seen this before".\n\n${name} attempted to fix everything.\n\nThis made everything worse.\n\nSo ${name} did what any sensible Singaporean would do.\n\nHe stood there and watched someone else solve it.\n\n${punchline}`;
-  }
-];
 
 function extractName(prompt:string) {
-  const match = prompt.match(/\b[A-Z][a-z]{2,15}\b/);
-  return match?.[0] ?? ["Mabel","Doreen","Reginald","Chip","Alicia","Benny"][Math.floor(Math.random()*6)];
+   const match = prompt.match(/\b[A-Z][a-z]{2,15}\b/);
+   return match?.[0] ?? ["Mabel","Doreen","Reginald","Chip","Alicia","Benny"][Math.floor(Math.random()*6)];
 }
 
-const comedianSystemPrompt = `
-You are an original Singaporean stand-up comedy writer.
-
-Your job is to turn the player's prompt into a genuinely funny, family-friendly short story (max 200 words).
-
-COMEDY STRUCTURE:
-1. Start with a normal situation.
-2. Introduce the player's main problem.
-3. Escalate the problem 2-3 times.
-4. Make characters react in an unexpectedly serious way.
-5. Include one recognisable Singaporean observation.
-6. Add a surprising twist and end with a strong punchline.
-
-Use Singlish sparingly and naturally. Avoid profanity, politics, and offensive stereotypes. Do NOT repeat the player's prompt verbatim; find a fresh angle.
-`;
-
-const fewShotExamples = [
-  {
-    prompt: 'Write a funny 150-word story about a toilet overflowing during a busy workday at an office.',
-    completion: `BREAKING NEWS: Benny has somehow become involved in OFFICE TOILET DISASTER.
-
-It started when Benny ignored the weird dripping sound while rushing to a meeting. Then the toilet overflowed, the office group chat lit up, and someone suggested forming a committee. Management arrived with stern faces and absolutely no mop.
-
-Spectators gathered, a colleague offered a whiteboard solution, and an auntie with a mop quietly fixed it. By lunchtime, the whole office had learned three new SOPs.
-
-In the end, Benny learned two lessons: always listen to dripping, and never sit in a meeting with wet socks.
-
-And somehow, this was still considered a normal Tuesday.`
-  },
-  {
-    prompt: 'Write a short observational deadpan story about an MRT delay caused by a lost umbrella.',
-    completion: `The train was delayed because someone dropped an umbrella. Announcements were made with great solemnity. An office crowd formed committees to solve the umbrella problem.
-
-A man proposed a rota, a lady suggested a lost-and-found ceremony, and the person who lost the umbrella reappeared with coffee. Everyone treated the umbrella like a national emergency.
-
-When the train finally moved, an auntie clapped and someone from the WhatsApp group called it "history in motion."`
-  }
-];
-
-function scoreCandidate(text:string, prompt:string, theme:Theme) {
-  const last = text.trim().split(/[\r\n]+/).slice(-1)[0] ?? '';
-  const punchlineScore = last.split(/\s+/).length <= 12 ? 1 : 0.5;
-  const ruleOfThree = (text.match(/(,.*?){2,}/g) || []).length > 0 ? 1 : 0;
-  const localBonus = /mrt|hawker|lah|kopitiam|auntie|hdb|whatsapp/i.test(text) ? 0.5 : 0;
-  const lengthScore = Math.max(0, 1 - Math.abs(150 - wordCount(text)) / 200);
-  return punchlineScore * 3 + ruleOfThree * 1.5 + localBonus * 1 + lengthScore * 2;
-}
-
-function generateAiStoryMock(theme:Theme, prompt:string) {
-  // Build a mock 'AI' by using our templates but guided by a system prompt + examples
-  const system = comedianSystemPrompt;
-  const examples = fewShotExamples;
-
-  const name = extractName(prompt);
-  const angle = detectComedyAngle(prompt, theme);
-
-  const candidates: {text:string,score:number}[] = [];
-  for (let i=0;i<3;i++) {
-    const observation = singaporeObservations[Math.floor(Math.random()*singaporeObservations.length)];
-    const escalation = escalationEvents[Math.floor(Math.random()*escalationEvents.length)];
-    const punch = punchlines[Math.floor(Math.random()*punchlines.length)];
-    const tpl = comedyTemplates[i % comedyTemplates.length];
-    let text = tpl(prompt, theme, name, observation, escalation, punch);
-    // emulate AI-style tightening
-    text = text.replace(/\s+\n/g,'\n').replace(/\s{2,}/g,' ').trim();
-    if (wordCount(text) > 200) text = text.split(/\s+/).slice(0,199).join(' ') + '…';
-    const s = scoreCandidate(text,prompt,theme);
-    candidates.push({text,score:s});
-  }
-
-  candidates.sort((a,b)=>b.score-a.score);
-  const best = candidates[0];
-
-  const pa = promptAnalysis(prompt);
-  // lightweight ai metrics derived from candidate and prompt analysis
-  const humour = Math.min(10, 4 + pa.vals.Humour/12*3 + (best.score/6));
-  const creativity = Math.min(10, 4 + pa.vals.Creativity/12*3 + (Math.random()*2));
-    const surprise = Math.min(10, 4 + (/\b(twist|unexpected|surprise)\b/i.test(prompt)?2:1) + Math.random()*2);
-  const promptQuality = Math.min(10, 3 + pa.total/100*7);
-  const fit = Math.min(10, 3 + theme.subjects.filter(x=>prompt.toLowerCase().includes(x.toLowerCase())).length/Math.max(1,theme.subjects.length)*7);
-  const overall = Math.max(0, Math.min(10, humour*.35 + creativity*.2 + surprise*.15 + promptQuality*.2 + fit*.1 + (best.score/10)));
-
-  return { title: `The Great Tale of ${name} and ${theme.title}`, text: best.text, promptPower: pa.total, ai: { humour, creativity, surprise, promptQuality, fit, overall, commentary: 'Generated by local few-shot mock.' } };
-}
 function generateStory(theme:Theme, prompt: string) {
+  // Use the new multi-step pipeline
+  const result = generateStoryPipeline(prompt, theme.premise, 200, 3);
+  
+  const pa = promptAnalysis(prompt);
   const name = extractName(prompt);
 
-  const comedyAngle = detectComedyAngle(prompt, theme);
-
-  const observation =
-    singaporeObservations[
-      Math.floor(Math.random() * singaporeObservations.length)
-    ];
-
-  const escalation =
-    escalationEvents[
-      Math.floor(Math.random() * escalationEvents.length)
-    ];
-
-  const punchline =
-    punchlines[
-      Math.floor(Math.random() * punchlines.length)
-    ];
-
-  const template =
-    comedyTemplates[
-      Math.floor(Math.random() * comedyTemplates.length)
-    ];
-
-  let text = template(
-    prompt,
-    theme,
-    name,
-    observation,
-    escalation,
-    punchline
+  // Map quality scores to AI metrics
+  const humour = Math.min(
+    10,
+    result.qualityScore.humour + 
+    (pa.vals.Humour / 12 * 2) + 
+    (/\b(funny|joke|absurd|silly)\b/i.test(prompt) ? 1 : 0)
   );
 
-  if (wordCount(text) > 200) {
-    text = text
-      .split(/\s+/)
-      .slice(0, 199)
-      .join(" ") + "…";
-  }
+  const creativity = Math.min(
+    10,
+    result.qualityScore.characterConsistency * 0.6 +
+    (pa.vals.Creativity / 12 * 3) +
+    (/\b(twist|unexpected|surprise)\b/i.test(prompt) ? 1.5 : 0)
+  );
 
-  const pa = promptAnalysis(prompt);
+  const surprise = Math.min(
+    10,
+    result.qualityScore.endingQuality +
+    (/\b(twist|unexpected|surprise)\b/i.test(prompt) ? 3 : 1) +
+    (Math.random() * 1.5)
+  );
 
-  /*
-   * Comedy scoring
-   */
+  const promptQuality = Math.min(10, 3 + pa.total / 100 * 7);
 
-  const hasHumour =
-    /\b(funny|funniest|hilarious|silly|joke|comedy|absurd|ridiculous|laugh)\b/i
-      .test(prompt);
-
-  const hasTwist =
-    /\b(twist|unexpected|surprise|suddenly|chaos)\b/i
-      .test(prompt);
-
-  const hasSingaporeContext =
-    /\b(singapore|mrt|hawker|kopitiam|hdb|office|void deck|auntie|uncle|lah|lor|leh|walao)\b/i
-      .test(prompt);
-
-  const humour =
-    Math.min(
-      10,
-      4 +
-        pa.vals.Humour / 12 * 3 +
-        (hasHumour ? 1.5 : 0) +
-        1
-    );
-
-  const creativity =
-    Math.min(
-      10,
-      4 +
-        pa.vals.Creativity / 12 * 4 +
-        (hasTwist ? 1.5 : 0)
-    );
-
-  const surprise =
-    Math.min(
-      10,
-      4 +
-        (hasTwist ? 4 : 1) +
-        Math.random()
-    );
-
-  const promptQuality =
-    Math.min(
-      10,
-      3 + pa.total / 100 * 7
-    );
-
-  const fit =
-    Math.min(
-      10,
-      3 +
-        theme.subjects.filter(x =>
-          prompt.toLowerCase().includes(x.toLowerCase())
-        ).length /
-        Math.max(1, theme.subjects.length) *
-        7
-    );
-
-  /*
-   * Singapore comedy bonus
-   */
-
-  const singaporeBonus =
-    hasSingaporeContext ? 0.5 : 0;
+  const fit = Math.min(
+    10,
+    3 +
+      theme.subjects.filter(x =>
+        prompt.toLowerCase().includes(x.toLowerCase())
+      ).length /
+      Math.max(1, theme.subjects.length) *
+      7
+  );
 
   const overall = Math.max(
     0,
@@ -430,14 +133,11 @@ function generateStory(theme:Theme, prompt: string) {
       creativity * 0.20 +
       surprise * 0.15 +
       promptQuality * 0.20 +
-      fit * 0.10 +
-      singaporeBonus +
-      (Math.random() - 0.5) * 0.25
+      fit * 0.10
     )
   );
 
   let commentary = "";
-
   if (overall >= 9) {
     commentary =
       "The AI judge has concerns. Mainly because it is laughing too hard to continue.";
@@ -457,9 +157,8 @@ function generateStory(theme:Theme, prompt: string) {
 
   return {
     title: `The Great Tale of ${name} and ${theme.title}`,
-    text,
+    text: result.text,
     promptPower: pa.total,
-
     ai: {
       humour,
       creativity,
@@ -517,7 +216,7 @@ function App() {
     const timer=setInterval(()=>{i++;setLoading(messages[i%messages.length]);},320);
     setTimeout(()=>{
       clearInterval(timer);
-      const g=generateAiStoryMock(theme,prompt);
+      const g=generateStory(theme,prompt);
       const s:Story={id:uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
       setStory(s); setStories(prev=>[s,...prev]); setStep("story");
     },1200);
