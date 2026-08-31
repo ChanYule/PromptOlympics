@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import {
@@ -184,6 +184,7 @@ function App() {
   const [theme,setTheme]=useState(themes[Math.floor(Math.random()*themes.length)]);
   const [prompt,setPrompt]=useState("");
   const [story,setStory]=useState<Story|null>(null);
+  const storyRef=useRef<Story|null>(null);
   const [stories,setStories]=useState<Story[]>([]);
   const [judgeStory,setJudgeStory]=useState<Story|null>(null);
   const [vote,setVote]=useState({funny:0,creative:0,surprise:0,fit:0});
@@ -204,9 +205,10 @@ function App() {
   const categories=Object.entries(analysis.vals);
   const availableJudge=stories.filter(s=>s.author.toLowerCase()!==nickname.trim().toLowerCase() && !s.votes.some(v=>v.voter.toLowerCase()===nickname.trim().toLowerCase()));
   const humanAvg=judgeStory && vote.funny&&vote.creative&&vote.surprise&&vote.fit ? (vote.funny+vote.creative+vote.surprise+vote.fit)/4 : 0;
+  const activeStory=story ?? storyRef.current;
 
   function startPlay() {
-    setNickname(randomNick()); setTheme(themes[Math.floor(Math.random()*themes.length)]); setPrompt(""); setStory(null); setMyJudged(false); setStep("nickname"); setPage("play");
+    storyRef.current=null; setNickname(randomNick()); setTheme(themes[Math.floor(Math.random()*themes.length)]); setPrompt(""); setStory(null); setMyJudged(false); setStep("nickname"); setPage("play");
   }
   function chooseChallenge() { setTheme(themes[Math.floor(Math.random()*themes.length)]); setStep("prompt"); }
   async function generate(regenerate=false) {
@@ -223,7 +225,7 @@ function App() {
       const response = await fetch("/api/generate-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, theme: `${theme.title}: ${theme.premise}`, regenerate, previousStory: regenerate ? story?.text : undefined }),
+        body: JSON.stringify({ prompt, theme: `${theme.title}: ${theme.premise}`, regenerate, previousStory: regenerate ? activeStory?.text : undefined }),
         signal: controller.signal
       });
       const payload = await response.json().catch(() => ({}));
@@ -232,8 +234,8 @@ function App() {
       }
       clearInterval(timer); window.clearTimeout(timeout);
       const g=buildStory(theme,prompt,payload.text.trim());
-      const s:Story={id:regenerate && story ? story.id : uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
-      setStory(s); setStories(prev=>regenerate && story ? prev.map(existing=>existing.id===story.id?s:existing) : [s,...prev]); setStep("story");
+      const s:Story={id:regenerate && activeStory ? activeStory.id : uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
+      storyRef.current=s; setStory(s); setStories(prev=>regenerate && activeStory ? prev.map(existing=>existing.id===activeStory.id?s:existing) : [s,...prev]); setStep("story");
     } catch (error) {
       clearInterval(timer); window.clearTimeout(timeout);
       setGenerationError(error instanceof DOMException && error.name === "AbortError" ? "The story AI took too long to reply. Please try again." : error instanceof Error ? error.message : "The story AI could not generate a story. Please try again.");
@@ -297,12 +299,12 @@ function App() {
       {step==="prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} analysis={analysis} categories={categories} onImprove={()=>setStep("improve")} onGenerate={generate} themeTitle={theme.title} error={generationError} isGenerating={isGenerating}/>}
       {step==="improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>}
       {step==="generate" && <Card icon="🤖" title={loading} sub="Your prompt is being transformed into comedy…"><div className="loader"><div>🏃</div><p>Running the Prompt Olympics…</p></div></Card>}
-      {step==="story" && story && <StoryCard story={story} onContinue={loadJudge} onRegenerate={()=>generate(true)} error={generationError}/>}
-      {step==="story" && !story && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved, so you can try again."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
+      {step==="story" && activeStory && <StoryCard story={activeStory} onContinue={loadJudge} onRegenerate={()=>generate(true)} error={generationError}/>}
+      {step==="story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved, so you can try again."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
       {step==="judge" && judgeStory && <JudgeCard story={judgeStory} vote={vote} setVote={setVote} onSubmit={submitVote}/>}
       {step==="reveal" && judgeStory && <Reveal story={judgeStory} humanAvg={humanAvg} onNext={loadJudge}/>}
-      {step==="results" && story && <Results story={story} myJudged={myJudged} onAgain={playAgain} onHall={()=>setPage("leaderboard")}/>}
-      {step==="results" && !story && <Card icon="🏁" title="No more stories to judge!" sub="Be the first Prompt Olympian to publish a story."><button className="primary full" onClick={startPlay}>Create a story</button></Card>}
+      {step==="results" && activeStory && <Results story={activeStory} myJudged={myJudged} onAgain={playAgain} onHall={()=>setPage("leaderboard")}/>}
+      {step==="results" && !activeStory && <Card icon="🏁" title="No more stories to judge!" sub="Be the first Prompt Olympian to publish a story."><button className="primary full" onClick={startPlay}>Create a story</button></Card>}
     </main>}
 
     {page==="judge" && <main className="game standalone">{judgeStory ? <><div className="judge-head"><span>🧑‍⚖️ YOU ARE THE JUDGE</span><button onClick={loadJudge}>New Voter</button></div><JudgeCard story={judgeStory} vote={vote} setVote={setVote} onSubmit={submitVote}/></> : <Card icon="🧑‍⚖️" title="Ready to judge?" sub={stories.length?"Pick a story and decide if humans can beat the AI.":"There aren't any stories yet."}><button className="primary full" onClick={loadJudge}>{stories.length?"Judge a story":"Start playing"}</button></Card>}</main>}
