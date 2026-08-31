@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-import { generateStory as generateStoryPipeline } from "./storyGeneration";
+import {
+  generateStory as generateStoryPipeline,
+  scoreOtherStory
+} from "./storyGeneration";
 
 type Theme = {
   id: string; title: string; premise: string; icon: string;
@@ -273,7 +276,7 @@ function App() {
       <div className="progress"><span>PLAY</span><div><i style={{width:`${({nickname:10,challenge:20,prompt:40,improve:55,generate:65,story:75,judge:85,reveal:92,results:100} as Record<string,number>)[step]}%`}}/></div><span>{step.toUpperCase()}</span></div>
       {step==="nickname" && <Card icon="👋" title="Welcome, Prompt Olympian!" sub="First, choose your temporary competition nickname."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("challenge")}>Continue →</button></Card>}
       {step==="challenge" && <Card icon={theme.icon} title={theme.title} sub={theme.premise}><div className="theme-card"><span>CHALLENGE</span><p>{theme.premise}</p><div className="bonus">{theme.bonuses.map(b=><em key={b}>{b}</em>)}</div></div><button className="secondary full" onClick={()=>setTheme(themes[Math.floor(Math.random()*themes.length)])}>🎲 Different challenge</button><button className="primary full" onClick={()=>setStep("prompt")}>Let's write! ✍️</button></Card>}
-      {step==="prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} analysis={analysis} categories={categories} onImprove={()=>setStep("improve")} onGenerate={generate}/>}
+      {step==="prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} analysis={analysis} categories={categories} onImprove={()=>setStep("improve")} onGenerate={generate} themeTitle={theme.title}/>}
       {step==="improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>}
       {step==="generate" && <Card icon="🤖" title={loading} sub="Your prompt is being transformed into comedy…"><div className="loader"><div>🏃</div><p>Running the Prompt Olympics…</p></div></Card>}
       {step==="story" && story && <StoryCard story={story} onContinue={loadJudge}/>}
@@ -294,9 +297,9 @@ function App() {
 function Card({icon,title,sub,children}:{icon:string,title:string,sub:string,children:React.ReactNode}) {
   return <section className="card centered"><div className="bigicon">{icon}</div><h2>{title}</h2><p className="sub">{sub}</p>{children}</section>
 }
-function PromptScreen({prompt,setPrompt,analysis,categories,onImprove,onGenerate}:{prompt:string,setPrompt:(s:string)=>void,analysis:any,categories:[string,unknown][],onImprove:()=>void,onGenerate:()=>void}) {
+function PromptScreen({prompt,setPrompt,analysis,categories,onImprove,onGenerate,themeTitle}:{prompt:string,setPrompt:(s:string)=>void,analysis:any,categories:[string,unknown][],onImprove:()=>void,onGenerate:()=>void,themeTitle:string}) {
   const append=(key:string)=>{const f=fragments[key]; if(f&&!prompt.includes(f))setPrompt(prompt.trim()+f)};
-  return <section className="card prompt-screen"><div className="challenge-mini">✍️ YOUR TURN · WRITE THE FUNNIEST PROMPT</div><h2>What should happen?</h2><p className="sub">Be specific. The better your instructions, the more powerful your prompt.</p>
+  return <section className="card prompt-screen"><div className="challenge-mini">✍️ YOUR TURN · WRITE THE FUNNIEST PROMPT</div><div className="challenge-banner"><span>Current challenge</span><strong>{themeTitle}</strong></div><h2>What should happen?</h2><p className="sub">Be specific. The better your instructions, the more powerful your prompt.</p>
     <div className="prompt-wrap"><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} maxLength={700} placeholder="Example: Write a funny story about a grumpy grandparent who accidentally becomes a superhero at an MRT station…"/><span>{prompt.length}/700</span></div>
     <div className="power"><div><strong>🔥 Prompt Power</strong><b>{analysis.total}/100</b></div><div className="flames">{"🔥".repeat(Math.ceil(analysis.total/20)||0)}{"▫️".repeat(5-Math.ceil(analysis.total/20))}</div></div>
     <div className="chips">{categories.map(([name,val])=><span className={Number(val)>=(scoreCategories.find(x=>x[0]===name)?.[1]??1)/2?"done":""} key={name}>{Number(val)>=(scoreCategories.find(x=>x[0]===name)?.[1]??1)/2?"✅":"💡"} {name}</span>)}</div>
@@ -315,7 +318,8 @@ function Rating({label,icon,value,onChange}:{label:string,icon:string,value:numb
  return <div className="rating"><b>{icon} {label}</b><div>{[1,2,3,4,5].map(n=><button className={n===value?"selected":""} onClick={()=>onChange(n)} key={n}>{n}</button>)}</div></div>
 }
 function JudgeCard({story,vote,setVote,onSubmit}:{story:Story,vote:any,setVote:(v:any)=>void,onSubmit:()=>void}) {
- return <section className="card judge-card"><div className="judge-label">🧑‍⚖️ YOU ARE THE JUDGE · BLIND</div><h2>{story.title}</h2><p className="story-text">{story.text}</p><div className="ratings"><Rating label="Funny" icon="😂" value={vote.funny} onChange={n=>setVote({...vote,funny:n})}/><Rating label="Creative" icon="💡" value={vote.creative} onChange={n=>setVote({...vote,creative:n})}/><Rating label="Surprising" icon="🤯" value={vote.surprise} onChange={n=>setVote({...vote,surprise:n})}/><Rating label="Fits the Challenge" icon="🎯" value={vote.fit} onChange={n=>setVote({...vote,fit:n})}/></div><button className="primary full" disabled={Object.values(vote).some((v:any)=>!v)} onClick={onSubmit}>Submit My Verdict ⚖️</button></section>
+ const scorePreview = scoreOtherStory(story.text, story.theme.title, story.prompt);
+ return <section className="card judge-card"><div className="judge-label">🧑‍⚖️ YOU ARE THE JUDGE · BLIND</div><div className="challenge-banner compact"><span>Challenge</span><strong>{story.theme.title}</strong></div><h2>{story.title}</h2><p className="story-text">{story.text}</p><div className="quick-score"><div><span>Quick score</span><strong>{scorePreview.overall.toFixed(1)}/10</strong></div><small>{scorePreview.summary}</small></div><div className="ratings"><Rating label="Funny" icon="😂" value={vote.funny} onChange={n=>setVote({...vote,funny:n})}/><Rating label="Creative" icon="💡" value={vote.creative} onChange={n=>setVote({...vote,creative:n})}/><Rating label="Surprising" icon="🤯" value={vote.surprise} onChange={n=>setVote({...vote,surprise:n})}/><Rating label="Fits the Challenge" icon="🎯" value={vote.fit} onChange={n=>setVote({...vote,fit:n})}/></div><button className="primary full" disabled={Object.values(vote).some((v:any)=>!v)} onClick={onSubmit}>Submit My Verdict ⚖️</button></section>
 }
 function Reveal({story,humanAvg,onNext}:{story:Story,humanAvg:number,onNext:()=>void}) {
  return <section className="card reveal"><div className="bigicon">⚖️</div><h2>Humans vs AI</h2><p className="sub">Here's how your verdict compares.</p><div className="compare"><div><span>🧑‍⚖️ HUMAN</span><strong>{(((humanAvg-1)/4)*10).toFixed(1)}</strong><small>/ 10</small></div><div><span>🤖 AI</span><strong>{story.ai.overall.toFixed(1)}</strong><small>/ 10</small></div></div><div className="ai-breakdown">{[["😂 Humour",story.ai.humour],["💡 Creativity",story.ai.creativity],["🤯 Surprise",story.ai.surprise],["✍️ Prompt Quality",story.ai.promptQuality],["🎯 Challenge Fit",story.ai.fit]].map(([k,v])=><div key={String(k)}><span>{k}</span><b>{Number(v).toFixed(1)}</b></div>)}</div><p className="verdict">{Math.abs(((humanAvg-1)/4)*10-story.ai.overall)<1?"🤝 Humans and AI agree!":(((humanAvg-1)/4)*10>story.ai.overall?"😂 You loved this more than the AI!":"🤖 AI saw the comedy before you did!")}</p><p className="commentary">“{story.ai.commentary}”</p><button className="primary full" onClick={onNext}>Next Story →</button></section>

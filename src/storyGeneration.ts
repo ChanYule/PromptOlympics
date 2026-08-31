@@ -39,6 +39,57 @@ interface StoryGenerationResult {
   issues: string[];
 }
 
+export interface StoryScoringResult {
+  funny: number;
+  creativity: number;
+  surprise: number;
+  challengeFit: number;
+  overall: number;
+  summary: string;
+}
+
+export function scoreOtherStory(
+  storyText: string,
+  challengeTitle: string,
+  originalPrompt: string
+): StoryScoringResult {
+  const text = storyText.toLowerCase();
+  const titleWords = challengeTitle.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const promptWords = originalPrompt.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+
+  const funnyHits = (text.match(/\b(funny|joke|laugh|absurd|silly|ridiculous|chaos|oops|pun|giggle|hilarious)\b/g) ?? []).length;
+  const creativityHits = (text.match(/\b(creative|unexpected|twist|clever|surprising|wild|strange|oddball|inventive|impossible)\b/g) ?? []).length;
+  const surpriseHits = (text.match(/\b(unexpected|twist|suddenly|then|however|but|reveal|realized|suddenly|shock|surprise)\b/g) ?? []).length;
+
+  const challengeMatches = titleWords.filter((word) => text.includes(word)).length;
+  const promptMatches = promptWords.filter((word) => text.includes(word)).length;
+
+  const funny = Math.min(10, 3 + funnyHits * 0.8 + (text.length > 80 ? 1.5 : 0));
+  const creativity = Math.min(10, 2.5 + creativityHits * 0.9 + (surpriseHits > 0 ? 1.5 : 0));
+  const surprise = Math.min(10, 2 + surpriseHits * 0.7 + (text.includes("but") || text.includes("however") ? 1.2 : 0));
+  const challengeFit = Math.min(10, 2 + challengeMatches * 0.7 + promptMatches * 0.35);
+
+  const overall = Math.min(
+    10,
+    (funny * 0.35 + creativity * 0.25 + surprise * 0.2 + challengeFit * 0.2)
+  );
+
+  let summary = "A solid story with room for more punch.";
+  if (overall >= 9) summary = "Excellent comedic timing and a strong challenge fit.";
+  else if (overall >= 8) summary = "Very strong story with memorable turns and good payoff.";
+  else if (overall >= 7) summary = "A fun, readable story that mostly lands its premise.";
+  else if (overall >= 5) summary = "Promising material, but it needs sharper escalation or a stronger punchline.";
+
+  return {
+    funny: Number(funny.toFixed(1)),
+    creativity: Number(creativity.toFixed(1)),
+    surprise: Number(surprise.toFixed(1)),
+    challengeFit: Number(challengeFit.toFixed(1)),
+    overall: Number(overall.toFixed(1)),
+    summary
+  };
+}
+
 // STEP 1: Extract Premise from User Prompt
 export function extractPremise(
   userPrompt: string,
