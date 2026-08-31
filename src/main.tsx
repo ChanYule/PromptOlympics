@@ -190,6 +190,7 @@ function App() {
   const [myJudged,setMyJudged]=useState(false);
   const [loading,setLoading]=useState("🤖 AI is warming up…");
   const [generationError,setGenerationError]=useState("");
+  const [isGenerating,setIsGenerating]=useState(false);
   const [largeText,setLargeText]=useState(false);
   const [highContrast,setHighContrast]=useState(false);
   const [reduced,setReduced]=useState(false);
@@ -208,8 +209,9 @@ function App() {
     setNickname(randomNick()); setTheme(themes[Math.floor(Math.random()*themes.length)]); setPrompt(""); setStory(null); setMyJudged(false); setStep("nickname"); setPage("play");
   }
   function chooseChallenge() { setTheme(themes[Math.floor(Math.random()*themes.length)]); setStep("prompt"); }
-  async function generate() {
-    if(!prompt.trim()) return;
+  async function generate(regenerate=false) {
+    if(!prompt.trim() || isGenerating) return;
+    setIsGenerating(true);
     setGenerationError("");
     setStep("generate");
     const messages=["🤖 AI is warming up…","😂 Searching for comedy…","💥 Preparing the plot twist…","🧠 Translating your genius…"];
@@ -221,7 +223,7 @@ function App() {
       const response = await fetch("/api/generate-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, theme: `${theme.title}: ${theme.premise}` }),
+        body: JSON.stringify({ prompt, theme: `${theme.title}: ${theme.premise}`, regenerate, previousStory: regenerate ? story?.text : undefined }),
         signal: controller.signal
       });
       const payload = await response.json().catch(() => ({}));
@@ -230,12 +232,14 @@ function App() {
       }
       clearInterval(timer); window.clearTimeout(timeout);
       const g=buildStory(theme,prompt,payload.text.trim());
-      const s:Story={id:uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
-      setStory(s); setStories(prev=>[s,...prev]); setStep("story");
+      const s:Story={id:regenerate && story ? story.id : uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
+      setStory(s); setStories(prev=>regenerate && story ? prev.map(existing=>existing.id===story.id?s:existing) : [s,...prev]); setStep("story");
     } catch (error) {
       clearInterval(timer); window.clearTimeout(timeout);
       setGenerationError(error instanceof DOMException && error.name === "AbortError" ? "The story AI took too long to reply. Please try again." : error instanceof Error ? error.message : "The story AI could not generate a story. Please try again.");
-      setStep("prompt");
+      setStep(regenerate ? "story" : "prompt");
+    } finally {
+      setIsGenerating(false);
     }
   }
   function loadJudge() {
@@ -290,10 +294,10 @@ function App() {
       <div className="progress"><span>PLAY</span><div><i style={{width:`${({nickname:10,challenge:20,prompt:40,improve:55,generate:65,story:75,judge:85,reveal:92,results:100} as Record<string,number>)[step]}%`}}/></div><span>{step.toUpperCase()}</span></div>
       {step==="nickname" && <Card icon="👋" title="Welcome, Prompt Olympian!" sub="First, choose your temporary competition nickname."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("challenge")}>Continue →</button></Card>}
       {step==="challenge" && <Card icon={theme.icon} title={theme.title} sub={theme.premise}><div className="theme-card"><span>CHALLENGE</span><p>{theme.premise}</p><div className="bonus">{theme.bonuses.map(b=><em key={b}>{b}</em>)}</div></div><button className="secondary full" onClick={()=>setTheme(themes[Math.floor(Math.random()*themes.length)])}>🎲 Different challenge</button><button className="primary full" onClick={()=>setStep("prompt")}>Let's write! ✍️</button></Card>}
-      {step==="prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} analysis={analysis} categories={categories} onImprove={()=>setStep("improve")} onGenerate={generate} themeTitle={theme.title} error={generationError}/>}
+      {step==="prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} analysis={analysis} categories={categories} onImprove={()=>setStep("improve")} onGenerate={generate} themeTitle={theme.title} error={generationError} isGenerating={isGenerating}/>}
       {step==="improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>}
       {step==="generate" && <Card icon="🤖" title={loading} sub="Your prompt is being transformed into comedy…"><div className="loader"><div>🏃</div><p>Running the Prompt Olympics…</p></div></Card>}
-      {step==="story" && story && <StoryCard story={story} onContinue={loadJudge}/>}
+      {step==="story" && story && <StoryCard story={story} onContinue={loadJudge} onRegenerate={()=>generate(true)} error={generationError}/>}
       {step==="judge" && judgeStory && <JudgeCard story={judgeStory} vote={vote} setVote={setVote} onSubmit={submitVote}/>}
       {step==="reveal" && judgeStory && <Reveal story={judgeStory} humanAvg={humanAvg} onNext={loadJudge}/>}
       {step==="results" && story && <Results story={story} myJudged={myJudged} onAgain={playAgain} onHall={()=>setPage("leaderboard")}/>}
@@ -311,22 +315,22 @@ function App() {
 function Card({icon,title,sub,children}:{icon:string,title:string,sub:string,children:React.ReactNode}) {
   return <section className="card centered"><div className="bigicon">{icon}</div><h2>{title}</h2><p className="sub">{sub}</p>{children}</section>
 }
-function PromptScreen({prompt,setPrompt,analysis,categories,onImprove,onGenerate,themeTitle,error}:{prompt:string,setPrompt:(s:string)=>void,analysis:any,categories:[string,unknown][],onImprove:()=>void,onGenerate:()=>void,themeTitle:string,error:string}) {
+function PromptScreen({prompt,setPrompt,analysis,categories,onImprove,onGenerate,themeTitle,error,isGenerating}:{prompt:string,setPrompt:(s:string)=>void,analysis:any,categories:[string,unknown][],onImprove:()=>void,onGenerate:()=>void,themeTitle:string,error:string,isGenerating:boolean}) {
   const append=(key:string)=>{const f=fragments[key]; if(f&&!prompt.includes(f))setPrompt(prompt.trim()+f)};
   return <section className="card prompt-screen"><div className="challenge-mini">✍️ YOUR TURN · WRITE THE FUNNIEST PROMPT</div><div className="challenge-banner"><span>Current challenge</span><strong>{themeTitle}</strong></div><h2>What should happen?</h2><p className="sub">Be specific. The better your instructions, the more powerful your prompt.</p>
     <div className="prompt-wrap"><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} maxLength={700} placeholder="Example: Write a funny story about a grumpy grandparent who accidentally becomes a superhero at an MRT station…"/><span>{prompt.length}/700</span></div>
     <div className="power"><div><strong>🔥 Prompt Power</strong><b>{analysis.total}/100</b></div><div className="flames">{"🔥".repeat(Math.ceil(analysis.total/20)||0)}{"▫️".repeat(5-Math.ceil(analysis.total/20))}</div></div>
     <div className="chips">{categories.map(([name,val])=><span className={Number(val)>=(scoreCategories.find(x=>x[0]===name)?.[1]??1)/2?"done":""} key={name}>{Number(val)>=(scoreCategories.find(x=>x[0]===name)?.[1]??1)/2?"✅":"💡"} {name}</span>)}</div>
     <div className="suggestions">{["Audience","Context","Specificity","Constraints","Output format","Creativity","Humour"].filter(k=>!prompt.includes(fragments[k])).slice(0,5).map(k=><button onClick={()=>append(k)} key={k}>＋ {k}</button>)}</div>
-    {error && <p className="generation-error" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onImprove}>✨ Want to make your prompt stronger?</button><button className="primary full" disabled={!prompt.trim()} onClick={onGenerate}>🤖 Generate My Story</button>
+    {error && <p className="generation-error" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onImprove} disabled={isGenerating}>✨ Want to make your prompt stronger?</button><button className="primary full" disabled={!prompt.trim()||isGenerating} onClick={onGenerate}>🤖 Generate My Story</button>
   </section>
 }
 function Improve({prompt,setPrompt,analysis,onBack,onGenerate}:{prompt:string,setPrompt:(s:string)=>void,analysis:any,onBack:()=>void,onGenerate:()=>void}) {
   const lowest=Object.entries(analysis.vals).sort((a:any,b:any)=>a[1]-b[1]).slice(0,3).map(x=>x[0]);
   return <section className="card prompt-screen"><div className="challenge-mini">✨ PROMPT COACH</div><h2>Give your prompt a little boost.</h2><p className="sub">You only get one generation, so make it count.</p><div className="coach">{lowest.map(k=><button key={k} onClick={()=>setPrompt(prompt+fragments[k])}>💡 Add {k}<small>{fragments[k]}</small></button>)}</div><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} /><div className="row"><button className="secondary" onClick={onBack}>← Back</button><button className="primary" onClick={onGenerate}>Generate 🚀</button></div></section>
 }
-function StoryCard({story,onContinue}:{story:Story,onContinue:()=>void}) {
-  return <section className="card story-card"><div className="story-meta"><span>{story.theme.icon} {story.theme.title}</span><span>🔥 Prompt Power {story.promptPower}</span></div><h2>{story.title}</h2><p className="story-text">{story.text}</p><div className="secret"><span>🔒 AI verdict hidden</span><small>Judge another player's story first to reveal your score.</small></div><button className="primary full" onClick={onContinue}>🧑‍⚖️ Judge Another Player's Story →</button></section>
+function StoryCard({story,onContinue,onRegenerate,error}:{story:Story,onContinue:()=>void,onRegenerate:()=>void,error:string}) {
+  return <section className="card story-card"><div className="story-meta"><span>{story.theme.icon} {story.theme.title}</span><span>🔥 Prompt Power {story.promptPower}</span></div><h2>{story.title}</h2><p className="story-text">{story.text}</p>{error && <p className="generation-error" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onRegenerate}>🔄 Regenerate Story</button><div className="secret"><span>🔒 AI verdict hidden</span><small>Judge another player's story first to reveal your score.</small></div><button className="primary full" onClick={onContinue}>🧑‍⚖️ Judge Another Player's Story →</button></section>
 }
 function Rating({label,icon,value,onChange}:{label:string,icon:string,value:number,onChange:(n:number)=>void}) {
  return <div className="rating"><b>{icon} {label}</b><div>{[1,2,3,4,5].map(n=><button className={n===value?"selected":""} onClick={()=>onChange(n)} key={n}>{n}</button>)}</div></div>

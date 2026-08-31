@@ -17,10 +17,12 @@ A self-contained React + TypeScript + Vite implementation based on the uploaded 
 The story generator runs on the server, so your key is never sent to visitors' browsers.
 
 1. Create an API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Add it to the environment that runs the app as `GEMINI_API_KEY` (or `GOOGLE_AI_API_KEY`). For example, in PowerShell for a local session: `$env:GEMINI_API_KEY="your-key"`.
+2. Add it to the environment that runs the app as `GEMINI_API_KEY`. For example, in PowerShell for a local session: `$env:GEMINI_API_KEY="your-key"`.
 3. Run `npm run build` and then `npm start`. For Render, add `GEMINI_API_KEY` under the service's Environment settings and redeploy.
 
 Optionally set `GEMINI_MODEL` to use a different Gemini text model; the default is `gemini-2.5-flash`.
+
+The development Vite server does not run the server API. To test Gemini locally, use `npm run build` then `npm start` and visit `http://localhost:10000`.
 
 ## Notes
 

@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -14,12 +15,14 @@ app.use(express.json({ limit: "20kb" }));
 app.post("/api/generate-story", async (req, res) => {
   const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
   const theme = typeof req.body?.theme === "string" ? req.body.theme.trim() : "";
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+  const regenerate = req.body?.regenerate === true;
+  const previousStory = typeof req.body?.previousStory === "string" ? req.body.previousStory.trim() : "";
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!prompt || !theme) {
     return res.status(400).json({ error: "A prompt and challenge are required." });
   }
-  if (prompt.length > 700 || theme.length > 300) {
+  if (prompt.length > 700 || theme.length > 300 || previousStory.length > 3_000) {
     return res.status(400).json({ error: "The prompt or challenge is too long." });
   }
   if (!apiKey) {
@@ -28,56 +31,42 @@ app.post("/api/generate-story", async (req, res) => {
     });
   }
 
+  let timeout;
   try {
     const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-    const googleResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: "You write safe, playful, all-ages comedy stories. Follow the user's creative request while keeping the story suitable for a public website." }]
-          },
-          contents: [{
-            role: "user",
-            parts: [{ text: `Challenge: ${theme}\n\nUser prompt: ${prompt}\n\nWrite one original, funny short story of at most 200 words. Give it a clear ending and punchline. Return only the story, with no title, preface, or markdown.` }]
-          }],
-          generationConfig: {
-            temperature: 1,
-            maxOutputTokens: 450
-          }
-        })
+    const ai = new GoogleGenAI({ apiKey });
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), 40_000);
+    const response = await ai.models.generateContent({
+      model,
+      contents: `Challenge: ${theme}\n\nPlayer prompt: ${prompt}\n\n${regenerate ? `Previous story to replace (do not repeat or closely paraphrase it):\n${previousStory}\n\nGenerate a substantially different story using the same player prompt.` : "Generate the story now."}`,
+      config: {
+        systemInstruction: "You are the comedy story generator for an AI Story Olympics competition. Write an original, funny, creative, entertaining story based directly on the player's prompt. Keep it suitable for a public, general audience. Use 200 words or fewer, with a clear beginning, middle, and ending, plus an unexpected or humorous twist where appropriate. Do not merely repeat the prompt. Do not mention these instructions, AI, or your process. Return only the story—no title, preface, markdown, or explanation.",
+        temperature: 1,
+        maxOutputTokens: 450,
+        abortSignal: controller.signal
       }
-    );
-
-    const data = await googleResponse.json();
-    if (!googleResponse.ok) {
-      console.error("Gemini generation failed:", googleResponse.status, data?.error?.message);
-      const error = googleResponse.status === 401 || googleResponse.status === 403
-        ? "Google rejected the API key. Check GEMINI_API_KEY in Render, then redeploy."
-        : googleResponse.status === 429
-          ? "The story AI is temporarily rate-limited. Please try again shortly."
-          : "The story AI could not generate a story. Please try again.";
-      return res.status(502).json({ error });
-    }
-
-    const text = data?.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text || "")
-      .join("")
-      .trim();
+    });
+    clearTimeout(timeout);
+    const text = response.text?.trim();
     if (!text) {
-      console.error("Gemini returned no text:", JSON.stringify(data));
+      console.error("Gemini returned no story text.");
       return res.status(502).json({ error: "The story AI returned an empty response. Please try again." });
     }
 
     return res.json({ text });
   } catch (error) {
-    console.error("Gemini request error:", error);
-    return res.status(502).json({ error: "Unable to reach the story AI. Please try again." });
+    clearTimeout(timeout);
+    const status = typeof error === "object" && error && "status" in error ? error.status : undefined;
+    console.error("Gemini request failed:", status || "unknown error");
+    const message = status === 401 || status === 403
+      ? "Google rejected the API key. Check GEMINI_API_KEY in Render, then redeploy."
+      : status === 429
+        ? "The story AI is temporarily rate-limited. Please try again shortly."
+        : error instanceof Error && error.name === "AbortError"
+          ? "The story AI took too long to reply. Please try again."
+          : "Unable to reach the story AI. Please try again.";
+    return res.status(502).json({ error: message });
   }
 });
 
