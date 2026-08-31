@@ -53,15 +53,15 @@ export function extractPremise(
 
   // Common protagonist patterns
   const protagonistPatterns: Array<[RegExp, string]> = [
-    (/\b(robot|android|ai)\b/i, "a robot"),
-    (/\b(cat|dog|pet|animal|puppy|kitten|parrot)\b/i, "a cat"),
-    (/\b(alien|extraterrestrial|martian)\b/i, "an alien"),
-    (/\b(grandma|grandpa|grandmother|grandfather)\b/i, "a grandparent"),
-    (/\b(wizard|witch|sorcerer|magician)\b/i, "a wizard"),
-    (/\b(superhero|hero|villain)\b/i, "a superhero"),
-    (/\b(student|teacher|professor)\b/i, "a student"),
-    (/\b(wrestler)\b/i, "a wrestler"),
-    (/\b(printer|machine|device|computer)\b/i, "a machine")
+    [/\b(robot|android|ai)\b/i, "a robot"],
+    [/\b(cat|dog|pet|animal|puppy|kitten|parrot)\b/i, "a cat"],
+    [/\b(alien|extraterrestrial|martian)\b/i, "an alien"],
+    [/\b(grandma|grandpa|grandmother|grandfather)\b/i, "a grandparent"],
+    [/\b(wizard|witch|sorcerer|magician)\b/i, "a wizard"],
+    [/\b(superhero|hero|villain)\b/i, "a superhero"],
+    [/\b(student|teacher|professor)\b/i, "a student"],
+    [/\b(wrestler)\b/i, "a wrestler"],
+    [/\b(printer|machine|device|computer)\b/i, "a machine"]
   ];
 
   for (const [pattern, repl] of protagonistPatterns) {
@@ -74,15 +74,15 @@ export function extractPremise(
   // Extract setting
   let setting = "an everyday place";
   const settingPatterns: Array<[RegExp, string]> = [
-    (/\b(family dinner|dinner table|dinner)\b/i, "a family dinner"),
-    (/\b(school|classroom|teacher)\b/i, "a school"),
-    (/\b(mrt|train station|train)\b/i, "a train station"),
-    (/\b(restaurant|cafe|diner|food court)\b/i, "a restaurant"),
-    (/\b(office|workplace|work|company)\b/i, "a workplace"),
-    (/\b(home|house|apartment)\b/i, "a home"),
-    (/\b(beach|park|outdoor|garden|nature)\b/i, "an outdoor location"),
-    (/\b(ring|arena|stadium|wrestling)\b/i, "a wrestling ring"),
-    (/\b(parliament|congress|government|hall)\b/i, "a parliament")
+    [/\b(family dinner|dinner table|dinner)\b/i, "a family dinner"],
+    [/\b(school|classroom|teacher)\b/i, "a school"],
+    [/\b(mrt|train station|train)\b/i, "a train station"],
+    [/\b(restaurant|cafe|diner|food court)\b/i, "a restaurant"],
+    [/\b(office|workplace|work|company)\b/i, "a workplace"],
+    [/\b(home|house|apartment)\b/i, "a home"],
+    [/\b(beach|park|outdoor|garden|nature)\b/i, "an outdoor location"],
+    [/\b(ring|arena|stadium|wrestling)\b/i, "a wrestling ring"],
+    [/\b(parliament|congress|government|hall)\b/i, "a parliament"]
   ];
 
   for (const [pattern, value] of settingPatterns) {
@@ -105,13 +105,13 @@ export function extractPremise(
   // Identify comedy mechanism
   let comedyMechanism = "absurdity";
   const mechanismPatterns: Array<[RegExp, string]> = [
-    (/\b(literal|literally|takes everything|exact)\b/i, "literal interpretation"),
-    (/\b(irony|ironic|opposite|backwards|reverse)\b/i, "irony"),
-    (/\b(misunderstand|confused|confusion|wrong|mistaken)\b/i, "misunderstanding"),
-    (/\b(escalat|chaos|disaster|goes wrong|spiral)\b/i, "escalating consequences"),
-    (/\b(callback|reference|joke)\b/i, "callbacks"),
-    (/\b(twist|unexpected|surprise|shocking)\b/i, "unexpected twist"),
-    (/\b(exaggerat|extreme|absurd|ridiculous|silly)\b/i, "absurdity")
+    [/\b(literal|literally|takes everything|exact)\b/i, "literal interpretation"],
+    [/\b(irony|ironic|opposite|backwards|reverse)\b/i, "irony"],
+    [/\b(misunderstand|confused|confusion|wrong|mistaken)\b/i, "misunderstanding"],
+    [/\b(escalat|chaos|disaster|goes wrong|spiral)\b/i, "escalating consequences"],
+    [/\b(callback|reference|joke)\b/i, "callbacks"],
+    [/\b(twist|unexpected|surprise|shocking)\b/i, "unexpected twist"],
+    [/\b(exaggerat|extreme|absurd|ridiculous|silly)\b/i, "absurdity"]
   ];
 
   for (const [pattern, mechanism] of mechanismPatterns) {
