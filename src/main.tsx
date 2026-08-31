@@ -215,23 +215,26 @@ function App() {
     const messages=["🤖 AI is warming up…","😂 Searching for comedy…","💥 Preparing the plot twist…","🧠 Translating your genius…"];
     let i=0; setLoading(messages[0]);
     const timer=setInterval(()=>{i++;setLoading(messages[i%messages.length]);},320);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
     try {
       const response = await fetch("/api/generate-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, theme: `${theme.title}: ${theme.premise}` })
+        body: JSON.stringify({ prompt, theme: `${theme.title}: ${theme.premise}` }),
+        signal: controller.signal
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || typeof payload.text !== "string") {
         throw new Error(payload.error || "The story AI could not generate a story. Please try again.");
       }
-      clearInterval(timer);
+      clearInterval(timer); window.clearTimeout(timeout);
       const g=buildStory(theme,prompt,payload.text.trim());
       const s:Story={id:uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
       setStory(s); setStories(prev=>[s,...prev]); setStep("story");
     } catch (error) {
-      clearInterval(timer);
-      setGenerationError(error instanceof Error ? error.message : "The story AI could not generate a story. Please try again.");
+      clearInterval(timer); window.clearTimeout(timeout);
+      setGenerationError(error instanceof DOMException && error.name === "AbortError" ? "The story AI took too long to reply. Please try again." : error instanceof Error ? error.message : "The story AI could not generate a story. Please try again.");
       setStep("prompt");
     }
   }
@@ -315,7 +318,7 @@ function PromptScreen({prompt,setPrompt,analysis,categories,onImprove,onGenerate
     <div className="power"><div><strong>🔥 Prompt Power</strong><b>{analysis.total}/100</b></div><div className="flames">{"🔥".repeat(Math.ceil(analysis.total/20)||0)}{"▫️".repeat(5-Math.ceil(analysis.total/20))}</div></div>
     <div className="chips">{categories.map(([name,val])=><span className={Number(val)>=(scoreCategories.find(x=>x[0]===name)?.[1]??1)/2?"done":""} key={name}>{Number(val)>=(scoreCategories.find(x=>x[0]===name)?.[1]??1)/2?"✅":"💡"} {name}</span>)}</div>
     <div className="suggestions">{["Audience","Context","Specificity","Constraints","Output format","Creativity","Humour"].filter(k=>!prompt.includes(fragments[k])).slice(0,5).map(k=><button onClick={()=>append(k)} key={k}>＋ {k}</button>)}</div>
-    {error && <p className="sub" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onImprove}>✨ Want to make your prompt stronger?</button><button className="primary full" disabled={!prompt.trim()} onClick={onGenerate}>🤖 Generate My Story</button>
+    {error && <p className="generation-error" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onImprove}>✨ Want to make your prompt stronger?</button><button className="primary full" disabled={!prompt.trim()} onClick={onGenerate}>🤖 Generate My Story</button>
   </section>
 }
 function Improve({prompt,setPrompt,analysis,onBack,onGenerate}:{prompt:string,setPrompt:(s:string)=>void,analysis:any,onBack:()=>void,onGenerate:()=>void}) {

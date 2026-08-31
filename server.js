@@ -14,7 +14,7 @@ app.use(express.json({ limit: "20kb" }));
 app.post("/api/generate-story", async (req, res) => {
   const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
   const theme = typeof req.body?.theme === "string" ? req.body.theme.trim() : "";
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
   if (!prompt || !theme) {
     return res.status(400).json({ error: "A prompt and challenge are required." });
@@ -57,7 +57,12 @@ app.post("/api/generate-story", async (req, res) => {
     const data = await googleResponse.json();
     if (!googleResponse.ok) {
       console.error("Gemini generation failed:", googleResponse.status, data?.error?.message);
-      return res.status(502).json({ error: "The story AI could not generate a story. Please try again." });
+      const error = googleResponse.status === 401 || googleResponse.status === 403
+        ? "Google rejected the API key. Check GEMINI_API_KEY in Render, then redeploy."
+        : googleResponse.status === 429
+          ? "The story AI is temporarily rate-limited. Please try again shortly."
+          : "The story AI could not generate a story. Please try again.";
+      return res.status(502).json({ error });
     }
 
     const text = data?.candidates?.[0]?.content?.parts
