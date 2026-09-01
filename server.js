@@ -11,9 +11,9 @@ const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, "dist");
 
 const getModel = () => {
-  // Using gemini-pro which is more widely available in v1beta
-  // Other options: gemini-pro-vision, etc.
-  return process.env.GEMINI_MODEL || "gemini-pro";
+  // This project documents gemini-2.5-flash as the default working model.
+  // Keep the server aligned with the documented setup to avoid invalid model IDs.
+  return process.env.GEMINI_MODEL || "gemini-2.5-flash";
 };
 
 function geminiErrorDetails(error) {
