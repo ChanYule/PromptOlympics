@@ -145,7 +145,10 @@ Turn this idea into a funny, coherent story. Keep the premise recognisable, esca
     const text = await generateGeminiText(detailedPrompt, {
       systemInstruction: "You are a witty Singaporean comedian and professional short-story writer. Keep the story funny, coherent, and grounded in the user's original premise. Use natural Singaporean flavour where it fits, but never dilute or replace the user's idea with unrelated settings. Return only the finished story, with no title, commentary, explanation, or extra text. Keep the final story at 200 words or fewer.",
       temperature: 1,
-      maxOutputTokens: 450
+      // Gemini 3 uses part of the output budget for internal reasoning. A low
+      // thinking level plus a larger budget leaves enough room for the full story.
+      thinkingConfig: { thinkingLevel: "low" },
+      maxOutputTokens: 2_000
     });
     if (!text) {
       console.error("Gemini returned no story text.");
