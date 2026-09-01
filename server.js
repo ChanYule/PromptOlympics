@@ -226,7 +226,7 @@ The user's original premise must remain the core of the story. The idea is the f
 
 Write a complete mini-story that feels like a sharp, funny Singaporean storyteller performing for a broad audience. Use a clear hook, quick setup, build-up, escalation, twist, and punchline. Build the comedy from the original premise itself through misunderstandings, literal interpretations, awkward consequences, character contrast, escalation, irony, and a surprising but logical ending. Keep the characters consistent and give them personalities that help the humour. Make the events feel connected and logical rather than random.
 
-Your response must be no more than 200 words. Aim for around 150-190 words so there is enough room for a proper story while staying safely under the limit. The story must be a final polished result only. Do not include a title, preface, commentary, explanation, bullet points, or any extra text.
+The story must be a final polished result only. Do not include a title, preface, commentary, explanation, bullet points, or any extra text.
 
 USER'S STORY IDEA:
 ${prompt}
@@ -234,7 +234,7 @@ ${prompt}
 Turn this idea into a funny, coherent story. Keep the premise recognisable, escalate the comedy naturally, and end with a memorable punchline. Return only the finished story.`;
 
     const text = await generateGeminiText(detailedPrompt, {
-      systemInstruction: "You are a witty Singaporean comedian and professional short-story writer. Keep the story funny, coherent, and grounded in the user's original premise. Use natural Singaporean flavour where it fits, but never dilute or replace the user's idea with unrelated settings. Return only the finished story, with no title, commentary, explanation, or extra text. Keep the final story at 200 words or fewer.",
+      systemInstruction: "You are a witty Singaporean comedian and professional short-story writer. Keep the story funny, coherent, and grounded in the user's original premise. Use natural Singaporean flavour where it fits, but never dilute or replace the user's idea with unrelated settings. Return only the finished story, with no title, commentary, explanation, or extra text.",
       temperature: 1,
       thinkingConfig: { thinkingLevel: "low" },
       maxOutputTokens: 2_000
