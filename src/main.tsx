@@ -59,10 +59,6 @@ const scoreCategories = [
   ["Humour",12,/\b(funny|funniest|silly|joke|pun|absurd|hilarious|comedy|laugh)\b/i]
 ] as const;
 
-function randomNick() {
-  return `${nickAdjectives[Math.floor(Math.random()*nickAdjectives.length)]} ${nickNouns[Math.floor(Math.random()*nickNouns.length)]}`;
-}
-function uid() { return Math.random().toString(36).slice(2)+Date.now().toString(36); }
 function wordCount(s:string) { return s.trim() ? s.trim().split(/\s+/).length : 0; }
 
 function promptAnalysis(prompt:string) {
@@ -180,7 +176,7 @@ function finalScore(s:Story) {
 function App() {
   const [page,setPage]=useState<"home"|"play"|"judge"|"gallery"|"leaderboard"|"guide">("home");
   const [step,setStep]=useState<"nickname"|"challenge"|"prompt"|"improve"|"generate"|"story"|"judge"|"reveal"|"results">("nickname");
-  const [nickname,setNickname]=useState(randomNick());
+  const [nickname,setNickname]=useState(`${nickAdjectives[Math.floor(Math.random()*nickAdjectives.length)]} ${nickNouns[Math.floor(Math.random()*nickNouns.length)]}`);
   const [theme,setTheme]=useState(themes[Math.floor(Math.random()*themes.length)]);
   const [prompt,setPrompt]=useState("");
   const [story,setStory]=useState<Story|null>(null);
@@ -208,7 +204,7 @@ function App() {
   const activeStory=story ?? storyRef.current;
 
   function startPlay() {
-    storyRef.current=null; setNickname(randomNick()); setTheme(themes[Math.floor(Math.random()*themes.length)]); setPrompt(""); setStory(null); setMyJudged(false); setStep("nickname"); setPage("play");
+    storyRef.current=null; setNickname(`${nickAdjectives[Math.floor(Math.random()*nickAdjectives.length)]} ${nickNouns[Math.floor(Math.random()*nickNouns.length)]}`); setTheme(themes[Math.floor(Math.random()*themes.length)]); setPrompt(""); setStory(null); setMyJudged(false); setStep("nickname"); setPage("play");
   }
   function chooseChallenge() { setTheme(themes[Math.floor(Math.random()*themes.length)]); setStep("prompt"); }
   async function generate(regenerate=false) {
@@ -234,7 +230,7 @@ function App() {
       }
       clearInterval(timer); window.clearTimeout(timeout);
       const g=buildStory(theme,prompt,payload.text.trim());
-      const s:Story={id:regenerate && activeStory ? activeStory.id : uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
+      const s:Story={id:regenerate && activeStory ? activeStory.id : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
       storyRef.current=s; setStory(s); setStories(prev=>regenerate && activeStory ? prev.map(existing=>existing.id===activeStory.id?s:existing) : [s,...prev]); setStep("story");
     } catch (error) {
       clearInterval(timer); window.clearTimeout(timeout);
@@ -294,7 +290,7 @@ function App() {
 
     {page==="play" && <main className="game">
       <div className="progress"><span>PLAY</span><div><i style={{width:`${({nickname:10,challenge:20,prompt:40,improve:55,generate:65,story:75,judge:85,reveal:92,results:100} as Record<string,number>)[step]}%`}}/></div><span>{step.toUpperCase()}</span></div>
-      {step==="nickname" && <Card icon="👋" title="Welcome, Prompt Olympian!" sub="First, choose your temporary competition nickname."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("challenge")}>Continue →</button></Card>}
+      {step==="nickname" && <Card icon="👋" title="Welcome, Prompt Olympian!" sub="First, choose your temporary competition nickname."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(`${nickAdjectives[Math.floor(Math.random()*nickAdjectives.length)]} ${nickNouns[Math.floor(Math.random()*nickNouns.length)]}`)}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("challenge")}>Continue →</button></Card>}
       {step==="challenge" && <Card icon={theme.icon} title={theme.title} sub={theme.premise}><div className="theme-card"><span>CHALLENGE</span><p>{theme.premise}</p><div className="bonus">{theme.bonuses.map(b=><em key={b}>{b}</em>)}</div></div><button className="secondary full" onClick={()=>setTheme(themes[Math.floor(Math.random()*themes.length)])}>🎲 Different challenge</button><button className="primary full" onClick={()=>setStep("prompt")}>Let's write! ✍️</button></Card>}
       {step==="prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} analysis={analysis} categories={categories} onImprove={()=>setStep("improve")} onGenerate={generate} themeTitle={theme.title} error={generationError} isGenerating={isGenerating}/>}
       {step==="improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>}
