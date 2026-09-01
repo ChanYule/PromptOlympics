@@ -3,6 +3,22 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import { DEFAULT_MODEL, normalizeModelName } from "./geminiConfig.js";
+import {
+  buildLeaderboard,
+  createCompetition,
+  createSubmission,
+  createVote,
+  deleteAllSubmissions,
+  deleteSubmission,
+  getAverageScore,
+  getCurrentRound,
+  persistCompetitionStore,
+  readCompetitionStore,
+  resetCompetition,
+  resetVotes,
+  setCompetitionState,
+  startNewRound
+} from "./competitionStore.js";
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -10,6 +26,7 @@ const port = process.env.PORT || 10000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, "dist");
+const adminPassword = process.env.ADMIN_PASSWORD || process.env.PROMPT_OLYMPICS_ADMIN_PASSWORD || "prompt-olympics-admin";
 
 const getModel = () => {
   const configured = process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
@@ -65,7 +82,31 @@ async function generateGeminiText(contents, config = {}) {
   }
 }
 
-app.use(express.json({ limit: "20kb" }));
+function parseAdminPassword(req) {
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Bearer ")) {
+    return header.slice(7).trim();
+  }
+  return typeof req.headers["x-admin-password"] === "string" ? req.headers["x-admin-password"] : "";
+}
+
+function requireAdmin(req, res, next) {
+  const supplied = parseAdminPassword(req);
+  if (!supplied || supplied !== adminPassword) {
+    return res.status(401).json({ error: "Admin authentication required." });
+  }
+  return next();
+}
+
+function serializeRound(round) {
+  return {
+    ...round,
+    leaderboard: buildLeaderboard(round),
+    averageScores: Object.fromEntries(round.submissions.map((item) => [item.id, getAverageScore(round, item.id)]))
+  };
+}
+
+app.use(express.json({ limit: "50mb" }));
 
 app.get("/api/health", (req, res) => {
   res.json({
@@ -73,6 +114,56 @@ app.get("/api/health", (req, res) => {
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
     model: getModel()
   });
+});
+
+app.get("/api/competition", (req, res) => {
+  const store = readCompetitionStore();
+  const round = getCurrentRound(store);
+  res.json({ ok: true, state: round.state, competition: { ...store, currentRound: serializeRound(round) } });
+});
+
+app.post("/api/submissions", (req, res) => {
+  try {
+    const store = readCompetitionStore();
+    const participantName = typeof req.body?.participantName === "string" ? req.body.participantName.trim() : "";
+    const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
+    const resultText = typeof req.body?.resultText === "string" ? req.body.resultText.trim() : "";
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+    const theme = typeof req.body?.theme === "string" ? req.body.theme.trim() : "";
+
+    if (!participantName || !prompt || !resultText) {
+      return res.status(400).json({ error: "Participant name, prompt, and result text are required." });
+    }
+
+    const round = getCurrentRound(store);
+    if (round.state !== "SUBMISSIONS_OPEN") {
+      return res.status(409).json({ error: "Submissions are currently closed." });
+    }
+
+    const submission = createSubmission(store, { participantName, prompt, resultText });
+    if (title) submission.title = title;
+    if (theme) submission.theme = theme;
+    persistCompetitionStore(store);
+    return res.status(201).json({ ok: true, submission, round: serializeRound(round) });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to create submission." });
+  }
+});
+
+app.post("/api/votes", (req, res) => {
+  try {
+    const store = readCompetitionStore();
+    const submissionId = typeof req.body?.submissionId === "string" ? req.body.submissionId : "";
+    const voterSession = typeof req.body?.voterSession === "string" ? req.body.voterSession.trim() : "";
+    const participantName = typeof req.body?.participantName === "string" ? req.body.participantName.trim() : "";
+    const ratings = req.body?.ratings && typeof req.body.ratings === "object" ? req.body.ratings : {};
+
+    const vote = createVote(store, { submissionId, voterSession, participantName, ratings });
+    persistCompetitionStore(store);
+    return res.status(201).json({ ok: true, vote, round: serializeRound(getCurrentRound(store)) });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save vote." });
+  }
 });
 
 app.post("/api/test-gemini", async (req, res) => {
@@ -145,8 +236,6 @@ Turn this idea into a funny, coherent story. Keep the premise recognisable, esca
     const text = await generateGeminiText(detailedPrompt, {
       systemInstruction: "You are a witty Singaporean comedian and professional short-story writer. Keep the story funny, coherent, and grounded in the user's original premise. Use natural Singaporean flavour where it fits, but never dilute or replace the user's idea with unrelated settings. Return only the finished story, with no title, commentary, explanation, or extra text. Keep the final story at 200 words or fewer.",
       temperature: 1,
-      // Gemini 3 uses part of the output budget for internal reasoning. A low
-      // thinking level plus a larger budget leaves enough room for the full story.
       thinkingConfig: { thinkingLevel: "low" },
       maxOutputTokens: 2_000
     });
@@ -164,7 +253,88 @@ Turn this idea into a funny, coherent story. Keep the premise recognisable, esca
   }
 });
 
+app.get("/api/admin/competition", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  const round = getCurrentRound(store);
+  res.json({ ok: true, adminPasswordConfigured: Boolean(adminPassword), competition: { ...store, currentRound: serializeRound(round) } });
+});
+
+app.post("/api/admin/state", requireAdmin, (req, res) => {
+  const nextState = typeof req.body?.state === "string" ? req.body.state : "WAITING";
+  const store = readCompetitionStore();
+  const round = setCompetitionState(store, nextState);
+  persistCompetitionStore(store);
+  res.json({ ok: true, state: round.state, currentRound: serializeRound(round) });
+});
+
+app.post("/api/admin/start-voting", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  setCompetitionState(store, "VOTING");
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
+});
+
+app.post("/api/admin/end-voting", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  setCompetitionState(store, "RESULTS");
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
+});
+
+app.post("/api/admin/start-submissions", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  setCompetitionState(store, "SUBMISSIONS_OPEN");
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
+});
+
+app.post("/api/admin/close-submissions", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  setCompetitionState(store, "SUBMISSIONS_CLOSED");
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
+});
+
+app.post("/api/admin/reset-votes", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  const round = resetVotes(store);
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(round) });
+});
+
+app.post("/api/admin/delete-submission/:submissionId", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  const deleted = deleteSubmission(store, req.params.submissionId);
+  persistCompetitionStore(store);
+  res.json({ ok: true, deleted, currentRound: serializeRound(getCurrentRound(store)) });
+});
+
+app.post("/api/admin/delete-all-submissions", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  const round = deleteAllSubmissions(store);
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(round) });
+});
+
+app.post("/api/admin/reset-competition", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  const current = resetCompetition(store);
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(current), reset: true });
+});
+
+app.post("/api/admin/start-new-round", requireAdmin, (req, res) => {
+  const store = readCompetitionStore();
+  const round = startNewRound(store, req.body?.title || "Prompt Olympics");
+  persistCompetitionStore(store);
+  res.json({ ok: true, currentRound: serializeRound(round), competition: { ...store, currentRound: serializeRound(round) } });
+});
+
 app.use(express.static(distPath));
+
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
 
 app.get("/*", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));

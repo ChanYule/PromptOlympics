@@ -17,6 +17,51 @@ type Story = {
 
 type Vote = { voter:string; funny:number; creative:number; surprise:number; fit:number };
 
+type CompetitionState = "WAITING" | "SUBMISSIONS_OPEN" | "SUBMISSIONS_CLOSED" | "VOTING" | "RESULTS";
+
+type SubmissionRecord = {
+  id: string;
+  participantName: string;
+  prompt: string;
+  resultText: string;
+  title?: string;
+  theme?: string;
+  createdAt: number;
+  roundId?: string;
+};
+
+type VoteRecord = {
+  id: string;
+  submissionId: string;
+  voterSession: string;
+  overall: number;
+  ratings?: {
+    funniest?: number;
+    mostCreative?: number;
+    bestPrompt?: number;
+    overall?: number;
+  };
+};
+
+type CompetitionRound = {
+  id: string;
+  title: string;
+  roundNumber: number;
+  state: CompetitionState;
+  submissions: SubmissionRecord[];
+  votes: VoteRecord[];
+  leaderboard: Array<{ submissionId:string; participantName:string; prompt:string; resultText:string; averageScore:number; voteCount:number; createdAt:number; }>;
+};
+
+type CompetitionResponse = {
+  ok: boolean;
+  state: CompetitionState;
+  competition: {
+    currentRound: CompetitionRound;
+    rounds?: Array<{ id:string; title:string; roundNumber:number; state:CompetitionState; submissions:SubmissionRecord[]; votes:VoteRecord[]; }>;
+  };
+};
+
 const defaultTheme: Theme = {id:"story",title:"Creative Story",premise:"Write a funny story based on the user's idea.",icon:"✨",difficulty:"Easy",subjects:["story","funny","creative"],bonuses:["🎭 a twist"]};
 
 const themes: Theme[] = [defaultTheme];
@@ -45,6 +90,8 @@ const scoreCategories = [
   ["Humour",12,/\b(funny|funniest|silly|joke|pun|absurd|hilarious|comedy|laugh)\b/i]
 ] as const;
 
+const defaultRatings = { funniest: 0, mostCreative: 0, bestPrompt: 0, overall: 0 };
+
 function randomNick() {
   return `${nickAdjectives[Math.floor(Math.random()*nickAdjectives.length)]} ${nickNouns[Math.floor(Math.random()*nickNouns.length)]}`;
 }
@@ -60,12 +107,10 @@ function promptAnalysis(prompt:string) {
     const val = Math.min(max, hits * Math.max(1, Math.round(max/2)));
     vals[name]=val; total+=val;
   }
-  // mild creativity bonus, while keeping the score independent of raw length
-    if (/\b(twist|unexpected|surprise)\b/i.test(prompt)) vals.Creativity=Math.min(12, vals.Creativity+4);
+  if (/\b(twist|unexpected|surprise)\b/i.test(prompt)) vals.Creativity=Math.min(12, vals.Creativity+4);
   total = Math.min(100,total);
   return {total, vals, maxBy};
 }
-
 
 function extractName(prompt:string) {
    const match = prompt.match(/\b[A-Z][a-z]{2,15}\b/);
@@ -76,7 +121,6 @@ function buildStory(theme:Theme, prompt: string, text: string) {
   const pa = promptAnalysis(prompt);
   const name = extractName(prompt);
 
-  // Map quality scores to AI metrics
   const humour = Math.min(
     10,
     5 +
@@ -124,20 +168,15 @@ function buildStory(theme:Theme, prompt: string, text: string) {
 
   let commentary = "";
   if (overall >= 9) {
-    commentary =
-      "The AI judge has concerns. Mainly because it is laughing too hard to continue.";
+    commentary = "The AI judge has concerns. Mainly because it is laughing too hard to continue.";
   } else if (overall >= 8) {
-    commentary =
-      "Strong comedy. The situation escalated beautifully.";
+    commentary = "Strong comedy. The situation escalated beautifully.";
   } else if (overall >= 7) {
-    commentary =
-      "Pretty solid. The AI judge reluctantly approves.";
+    commentary = "Pretty solid. The AI judge reluctantly approves.";
   } else if (overall >= 5) {
-    commentary =
-      "A decent attempt. The comedy department requests more chaos.";
+    commentary = "A decent attempt. The comedy department requests more chaos.";
   } else {
-    commentary =
-      "The story survived. The jokes are still under investigation.";
+    commentary = "The story survived. The jokes are still under investigation.";
   }
 
   return {
@@ -204,8 +243,17 @@ function sanitizeStoredStories(value: unknown): Story[] {
   });
 }
 
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(init?.headers || {}) }, ...init });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof payload?.error === "string" ? payload.error : "Request failed.");
+  }
+  return payload as T;
+}
+
 function App() {
-const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
+  const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard"|"voting">("home");
   const [step,setStep]=useState<"nickname"|"prompt"|"improve"|"generate"|"story">("nickname");
   const [nickname,setNickname]=useState(randomNick());
   const [theme,setTheme]=useState(defaultTheme);
@@ -220,46 +268,56 @@ const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
   const [highContrast,setHighContrast]=useState(false);
   const [reduced,setReduced]=useState(false);
   const [sound,setSound]=useState(true);
-  const [admin,setAdmin]=useState(false);
+  const [competition,setCompetition]=useState<CompetitionResponse | null>(null);
+  const [voteSessionId,setVoteSessionId]=useState("Voter 1");
+  const [voteName,setVoteName]=useState("Voter 1");
+  const [voteRatings,setVoteRatings]=useState(defaultRatings);
+  const [voteError,setVoteError]=useState("");
+  const [voteSuccess,setVoteSuccess]=useState("");
+  const [isSubmittingVote,setIsSubmittingVote]=useState(false);
+  const [scoredSubmissionIds,setScoredSubmissionIds]=useState<string[]>([]);
+  const [voterNumber,setVoterNumber]=useState(1);
 
-  useEffect(()=>{
-    try {
-      const raw = localStorage.getItem("promptOlympicsStories");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      const sanitized = sanitizeStoredStories(parsed);
-      setStories(sanitized);
-      if (sanitized.length !== (Array.isArray(parsed) ? parsed.length : 0)) {
-        localStorage.setItem("promptOlympicsStories", JSON.stringify(sanitized));
-      }
-    } catch {
-      localStorage.removeItem("promptOlympicsStories");
-    }
+  const competitionState = competition?.state ?? "WAITING";
+  const currentRound = competition?.competition?.currentRound ?? null;
+
+  useEffect(() => {
+    void loadCompetition();
   }, []);
 
-  useEffect(()=>{
+  async function loadCompetition() {
     try {
-      const safeStories = stories.map((story) => ({
-        id: story.id,
-        author: story.author,
-        theme: story.theme,
-        prompt: story.prompt,
-        title: story.title,
-        text: story.text,
-        promptPower: story.promptPower,
-        ai: story.ai,
-        votes: story.votes,
-        createdAt: story.createdAt,
+      const result = await fetchJson<CompetitionResponse>("/api/competition");
+      setCompetition(result);
+      const serverStories = result.competition?.currentRound?.submissions ?? [];
+      const normalizedStories = serverStories.map((item) => ({
+        id: item.id,
+        author: item.participantName,
+        theme: { ...defaultTheme, title: item.theme ?? defaultTheme.title },
+        prompt: item.prompt,
+        title: item.title ?? "Prompt Olympics Result",
+        text: item.resultText,
+        promptPower: 0,
+        ai: { humour: 0, creativity: 0, surprise: 0, promptQuality: 0, fit: 0, overall: 0, commentary: "" },
+        votes: [],
+        createdAt: item.createdAt,
       }));
-      if (!safeStories.length) {
-        localStorage.removeItem("promptOlympicsStories");
-        return;
-      }
-      localStorage.setItem("promptOlympicsStories", JSON.stringify(safeStories));
-    } catch {
-      localStorage.removeItem("promptOlympicsStories");
+      setStories(normalizedStories);
+    } catch (error) {
+      console.error("Could not load competition", error);
     }
-  }, [stories]);
+  }
+
+  useEffect(() => {
+    if (competitionState === "VOTING") {
+      setPage("voting");
+    }
+  }, [competitionState]);
+
+  const availableSubmissions = (currentRound?.submissions ?? []).filter(
+    (submission) => !scoredSubmissionIds.includes(submission.id)
+  );
+  const currentCandidate = availableSubmissions[0] ?? null;
 
   const analysis=useMemo(()=>promptAnalysis(prompt),[prompt]);
   const activeStory=story ?? storyRef.current;
@@ -291,8 +349,38 @@ const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
       }
       clearInterval(timer); window.clearTimeout(timeout);
       const g=buildStory(theme,prompt,payload.text.trim());
-      const s:Story={id:regenerate && activeStory ? activeStory.id : uid(),author:nickname.trim(),theme,prompt,title:g.title,text:g.text,promptPower:g.promptPower,ai:g.ai,votes:[],createdAt:Date.now()};
-      storyRef.current=s; setStory(s); setStories(prev=>regenerate && activeStory ? prev.map(existing=>existing.id===activeStory.id?s:existing) : [s,...prev]); setStep("story");
+      const submissionStory:Story={
+        id: regenerate && activeStory ? activeStory.id : uid(),
+        author:nickname.trim(),
+        theme,
+        prompt,
+        title:g.title,
+        text:g.text,
+        promptPower:g.promptPower,
+        ai:g.ai,
+        votes:[],
+        createdAt:Date.now()
+      };
+      storyRef.current=submissionStory;
+      setStory(submissionStory);
+      setStories(prev=>regenerate && activeStory ? prev.map(existing=>existing.id===activeStory.id?submissionStory:existing) : [submissionStory,...prev]);
+      setStep("story");
+
+      const competitionSave = await fetchJson<{ ok: boolean; submission: SubmissionRecord; round: CompetitionRound }>("/api/submissions", {
+        method: "POST",
+        body: JSON.stringify({
+          participantName: nickname.trim(),
+          prompt,
+          resultText: g.text,
+          title: g.title,
+          theme: theme.title
+        })
+      });
+      if (competitionSave.ok && competitionSave.submission) {
+        storyRef.current = { ...submissionStory, id: competitionSave.submission.id };
+        setStory({ ...submissionStory, id: competitionSave.submission.id });
+      }
+      await loadCompetition();
     } catch (error) {
       clearInterval(timer); window.clearTimeout(timeout);
       setGenerationError(error instanceof DOMException && error.name === "AbortError" ? "The story AI took too long to reply. Please try again." : error instanceof Error ? error.message : "The story AI could not generate a story. Please try again.");
@@ -305,49 +393,196 @@ const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
   const shellClass=`app ${largeText?"large-text":""} ${highContrast?"contrast":""} ${reduced?"reduced":""}`;
   const nav=(p:typeof page)=>{setPage(p); if(p==="play")startPlay();};
 
+  function resetCurrentVoter() {
+    setScoredSubmissionIds([]);
+    setVoteError("");
+    setVoteSuccess("");
+    setVoteRatings(defaultRatings);
+  }
+
+  async function handleVoteSubmit() {
+    if (!currentCandidate) {
+      setVoteError("No more submissions to score.");
+      return;
+    }
+    if (!voteRatings.overall) {
+      setVoteError("Please choose a 1–5 Overall rating before submitting.");
+      return;
+    }
+    if (voteName.trim() && currentCandidate.participantName.toLowerCase() === voteName.trim().toLowerCase()) {
+      setVoteError("You cannot vote for your own submission.");
+      return;
+    }
+
+    setIsSubmittingVote(true);
+    setVoteError("");
+    try {
+      await fetchJson<{ ok: boolean }>("/api/votes", {
+        method: "POST",
+        body: JSON.stringify({
+          submissionId: currentCandidate.id,
+          voterSession: voteSessionId,
+          participantName: voteName.trim(),
+          ratings: {
+            funniest: voteRatings.funniest,
+            mostCreative: voteRatings.mostCreative,
+            bestPrompt: voteRatings.bestPrompt,
+            overall: voteRatings.overall,
+            overallScore: voteRatings.overall
+          }
+        })
+      });
+      setVoteSuccess("Vote recorded!");
+      setScoredSubmissionIds((prev) => [...prev, currentCandidate.id]);
+      setVoteRatings(defaultRatings);
+      const nextRound = availableSubmissions.filter((submission) => submission.id !== currentCandidate.id);
+      if (nextRound.length === 0) {
+        setVoteSessionId(`Voter ${voterNumber + 1}`);
+        setVoteName(`Voter ${voterNumber + 1}`);
+        setVoterNumber((value) => value + 1);
+        setTimeout(() => {
+          setScoredSubmissionIds([]);
+          setVoteSuccess("Voter complete. Pass the device to the next voter.");
+        }, 700);
+      }
+    } catch (error) {
+      setVoteError(error instanceof Error ? error.message : "The vote could not be saved. Please try again.");
+    } finally {
+      setIsSubmittingVote(false);
+    }
+  }
+
+  const leaderboard = currentRound?.leaderboard ?? [];
+
   return <div className={shellClass}>
     <header className="topbar">
-      <button className="brand" onClick={()=>nav("home")}><span className="brand-mark">✨</span><span>Story <b>Studio</b></span></button>
-      <nav>{(["home","play","gallery","leaderboard"] as const).map(p=><button className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{p==="home"?"Home":p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
-      <button className="tiny" onClick={()=>setAdmin(!admin)}>⚙️</button>
+      <button className="brand" onClick={()=>nav("home")}><span className="brand-mark">✨</span><span>Prompt <b>Olympics</b></span></button>
+      <nav>{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button className={page===p?"active":""} onClick={()=>{ if (p === "voting" && competitionState !== "VOTING") { setPage("home"); return; } nav(p); }} key={p}>{p==="home"?"Home":p === "voting" ? "Voting" : p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
+      <a className="tiny admin-link" href="/admin">⚙️ Admin</a>
     </header>
 
-    {admin && <div className="adminbar">
-      <b>Admin</b><span>Demo controls</span>
-      <button onClick={()=>setStories([])}>Reset event data</button>
-      <button onClick={()=>setLargeText(!largeText)}>Large text</button>
-      <button onClick={()=>setHighContrast(!highContrast)}>High contrast</button>
-      <button onClick={()=>setReduced(!reduced)}>Reduced motion</button>
-      <button onClick={()=>setSound(!sound)}>Sound {sound?"on":"off"}</button>
-      <button onClick={()=>setAdmin(false)}>Close</button>
-    </div>}
-
-    {page==="home" && <main className="home">
+    {page === "home" && <main className="home">
       <section className="hero">
-        <div className="eyebrow">✨ AI STORY GENERATOR</div>
-        <h1>Create<br/><span>funny stories</span> from your idea.</h1>
-        <p>Type a story premise, let the AI turn it into a short comedy, and keep refining the result until it feels right.</p>
-        <div className="hero-actions"><button className="primary" onClick={startPlay}>🚀 Start Writing</button><button className="secondary" onClick={()=>setPage("gallery")}>👀 See stories</button></div>
+        <div className="eyebrow">🏁 LIVE COMPETITION</div>
+        <h1>Prompt <span>Olympics</span></h1>
+        <p>{currentRound ? `Round ${currentRound.roundNumber}: ${currentRound.title}` : "Round 1"}</p>
+        <div className="hero-actions">
+          {competitionState === "SUBMISSIONS_OPEN" && <button className="primary" onClick={startPlay}>🚀 Join the challenge</button>}
+          {competitionState === "VOTING" && <button className="primary" onClick={()=>setPage("voting")}>⭐ Enter Voting Mode</button>}
+          {competitionState === "RESULTS" && <button className="primary" onClick={()=>setPage("leaderboard")}>🏆 View leaderboard</button>}
+          {competitionState === "WAITING" && <button className="secondary" onClick={()=>setPage("play")}>⏳ Waiting for round start</button>}
+        </div>
       </section>
       <section className="podium">
-        <div><span>📚</span><div><small>STORIES</small><strong>{stories.length||"—"}</strong></div></div>
-        <div><span>✨</span><div><small>MOST RECENT</small><strong>{stories[0] ? finalScore(stories[0]).toFixed(1) : "—"}</strong></div></div>
-        <div><span>🎭</span><div><small>TOP SCORE</small><strong>{stories.length?Math.max(...stories.map(finalScore)).toFixed(1):"—"}</strong></div></div>
+        <div><span>🏟️</span><div><small>ROUND</small><strong>{currentRound?.roundNumber ?? 1}</strong></div></div>
+        <div><span>📊</span><div><small>STATE</small><strong>{competitionState}</strong></div></div>
+        <div><span>🏆</span><div><small>SUBMISSIONS</small><strong>{currentRound?.submissions.length ?? 0}</strong></div></div>
       </section>
     </main>}
 
-    {page==="play" && <main className="game">
+    {page === "play" && <main className="game">
       <div className="progress"><span>PLAY</span><div><i style={{width:`${({nickname:25,prompt:50,improve:70,generate:85,story:100} as Record<string,number>)[step]}%`}}/></div><span>{step.toUpperCase()}</span></div>
-      {step==="nickname" && <Card icon="👋" title="Choose a nickname" sub="Pick a name for your story studio."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("prompt")}>Continue →</button></Card>}
-      {step==="prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} onImprove={()=>setStep("improve")} onGenerate={generate} error={generationError} isGenerating={isGenerating}/>} 
-      {step==="improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>} 
-      {step==="generate" && <Card icon="🤖" title={loading} sub="Your idea is being turned into a story…"><div className="loader"><div>🏃</div><p>Writing your story…</p></div></Card>}
-      {step==="story" && activeStory && <StoryCard story={activeStory} onRegenerate={()=>generate(true)} onBackToPrompt={()=>setStep("prompt")} error={generationError}/>} 
-      {step==="story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved, so you can try again."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
+      {competitionState !== "SUBMISSIONS_OPEN" && competitionState !== "WAITING" ? <Card icon="⏳" title="Submissions are unavailable" sub="The organiser has closed the current submission round."><button className="primary full" onClick={()=>setPage("home")}>← Back home</button></Card> : null}
+      {competitionState === "SUBMISSIONS_OPEN" && step === "nickname" && <Card icon="👋" title="Choose a nickname" sub="Pick a name to enter the competition."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("prompt")}>Continue →</button></Card>}
+      {competitionState === "SUBMISSIONS_OPEN" && step === "prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} onImprove={()=>setStep("improve")} onGenerate={generate} error={generationError} isGenerating={isGenerating}/>} 
+      {competitionState === "SUBMISSIONS_OPEN" && step === "improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>} 
+      {competitionState === "SUBMISSIONS_OPEN" && step === "generate" && <Card icon="🤖" title={loading} sub="Your idea is being turned into a story…"><div className="loader"><div>🏃</div><p>Writing your story…</p></div></Card>}
+      {competitionState === "SUBMISSIONS_OPEN" && step === "story" && activeStory && <StoryCard story={activeStory} onRegenerate={()=>generate(true)} onBackToPrompt={()=>setStep("prompt")} error={generationError}/>} 
+      {competitionState === "SUBMISSIONS_OPEN" && step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
     </main>}
 
-    {page==="gallery" && <Gallery stories={stories}/>}
-    {page==="leaderboard" && <Leaderboard stories={stories}/>} 
+    {page === "gallery" && <Gallery stories={stories}/>} 
+    {page === "leaderboard" && <Leaderboard stories={stories} />} 
+
+    {page === "voting" && competitionState === "VOTING" && (
+      <main className="content voting-screen">
+        <div className="page-title compact">
+          <div>
+            <span>⭐ VOTING MODE</span>
+            <h1>Rate the entries.</h1>
+          </div>
+        </div>
+
+        {!currentCandidate ? (
+          <section className="card centered voting-empty">
+            <div className="bigicon">✅</div>
+            <h2>Voting complete for this session.</h2>
+            <p className="sub">All entries in this round have been scored by {voteSessionId}.</p>
+            <button className="primary full" onClick={() => {
+              const next = `Voter ${voterNumber + 1}`;
+              setVoterNumber((value) => value + 1);
+              setVoteSessionId(next);
+              setVoteName(next);
+              setScoredSubmissionIds([]);
+              setVoteSuccess("Next voter ready.");
+              setVoteError("");
+              setVoteRatings(defaultRatings);
+            }}>➡️ Next voter</button>
+          </section>
+        ) : (
+          <section className="card voting-card">
+            <div className="vote-header">
+              <div>
+                <small>Current voter</small>
+                <h3>{voteSessionId}</h3>
+              </div>
+              <div>
+                <small>Progress</small>
+                <h3>{availableSubmissions.length} remaining</h3>
+              </div>
+            </div>
+
+            <div className="voter-box">
+              <label htmlFor="voter-name">Current voter name / identifier</label>
+              <input id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} placeholder="Voter 1" />
+            </div>
+
+            <div className="submission-panel">
+              <div className="submission-meta">
+                <span>Result {Math.max(1, (currentRound?.submissions.length ?? 0) - availableSubmissions.length + 1)} of {currentRound?.submissions.length ?? 0}</span>
+                <strong>{currentCandidate.participantName}</strong>
+              </div>
+              <h2>{currentCandidate.title ?? "Prompt Olympics Result"}</h2>
+              <p>{currentCandidate.resultText}</p>
+            </div>
+
+            <div className="rating-area">
+              {[
+                ["😂 Funniest", "funniest"],
+                ["💡 Most Creative", "mostCreative"],
+                ["✨ Best Prompt", "bestPrompt"],
+                ["⭐ Overall", "overall"]
+              ].map(([label, key]) => (
+                <div className="rating-row" key={key}>
+                  <div className="rating-label">{label}</div>
+                  <div className="star-row">
+                    {[1,2,3,4,5].map((value) => (
+                      <button
+                        key={`${key}-${value}`}
+                        className={`star-button ${voteRatings[key as keyof typeof voteRatings] >= value ? "selected" : ""}`}
+                        onClick={() => setVoteRatings((prev) => ({ ...prev, [key]: value }))}
+                        type="button"
+                        aria-label={`${label} ${value} stars`}
+                      >
+                        {value <= (voteRatings[key as keyof typeof voteRatings] || 0) ? "★" : "☆"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {voteError && <p className="generation-error" role="alert">⚠️ {voteError}</p>}
+            {voteSuccess && <p className="vote-success" role="status">✅ {voteSuccess}</p>}
+
+            <div className="row voting-actions">
+              <button className="secondary" onClick={() => { setVoteError(""); setVoteRatings(defaultRatings); }} type="button">Reset</button>
+              <button className="primary" disabled={isSubmittingVote || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : "Submit vote"}</button>
+            </div>
+          </section>
+        )}
+      </main>
+    )}
   </div>
 }
 
@@ -376,4 +611,144 @@ function Leaderboard({stories}:{stories:Story[]}) {
  return <main className="content"><div className="page-title"><div><span>🥇 LEADERBOARD</span><h1>Who will take<br/><em>the podium?</em></h1></div></div>{!sorted.length?<div className="empty"><div>🏆</div><h2>The podium is waiting.</h2><p>Be the first Prompt Olympian to claim gold.</p></div>:<div className="leader">{sorted.map((s,i)=><div className="leader-row" key={s.id}><strong>{i+1===1?"🥇":i+1===2?"🥈":i+1===3?"🥉":`#${i+1}`}</strong><span>{s.author}<small>{s.title}</small></span><b>{finalScore(s).toFixed(1)}</b></div>)}</div>}</main>
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+function AdminApp() {
+  const [password, setPassword] = useState("");
+  const [session, setSession] = useState<CompetitionResponse | null>(null);
+  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  async function loadAdminData() {
+    try {
+      const data = await fetchJson<CompetitionResponse>("/api/admin/competition", {
+        headers: { "x-admin-password": password }
+      });
+      setSession(data);
+      setError("");
+      setLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authentication failed.");
+      setLoaded(false);
+    }
+  }
+
+  async function callAdmin(url: string, method = "POST") {
+    if (!password) {
+      setError("Enter the admin password first.");
+      return;
+    }
+    try {
+      const data = await fetchJson<{ ok: boolean; currentRound?: CompetitionRound; message?: string; competition?: { currentRound: CompetitionRound } }>(url, {
+        method,
+        headers: { "x-admin-password": password }
+      });
+      const nextRound = data.currentRound ?? data.competition?.currentRound ?? null;
+      if (nextRound) {
+        const fresh = { ...session, competition: { ...(session?.competition ?? {}), currentRound: nextRound } } as CompetitionResponse;
+        setSession(fresh);
+      }
+      setError("");
+      await loadAdminData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Admin action failed.");
+    }
+  }
+
+  const currentRound = session?.competition?.currentRound ?? null;
+
+  return <div className="admin-shell">
+    {!loaded ? (
+      <main className="admin-login">
+        <section className="card centered admin-card">
+          <div className="bigicon">🔐</div>
+          <h2>Admin access</h2>
+          <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Enter admin password" />
+          {error && <p className="generation-error" role="alert">⚠️ {error}</p>}
+          <div className="row">
+            <a className="secondary button-link" href="/">← Back to app</a>
+            <button className="primary" onClick={loadAdminData}>Unlock admin</button>
+          </div>
+        </section>
+      </main>
+    ) : (
+      <main className="content admin-panel">
+        <div className="page-title admin-header">
+          <div>
+            <span>🛡️ ADMIN</span>
+            <h1>Round {currentRound?.roundNumber ?? 1}</h1>
+          </div>
+          <div className="row small-row">
+            <button className="secondary" onClick={() => window.location.href = "/"}>Back to event</button>
+            <button className="primary" onClick={() => callAdmin("/api/admin/start-submissions")}>Open submissions</button>
+            <button className="secondary" onClick={() => callAdmin("/api/admin/close-submissions")}>Close submissions</button>
+            <button className="primary" onClick={() => callAdmin("/api/admin/start-voting")}>Start voting</button>
+            <button className="secondary" onClick={() => callAdmin("/api/admin/end-voting")}>End voting</button>
+          </div>
+        </div>
+
+        <div className="dashboard-grid">
+          <div className="card admin-card compact-card">
+            <h3>Competition actions</h3>
+            <button className="secondary full" onClick={() => callAdmin("/api/admin/reset-votes")}>Reset votes</button>
+            <button className="secondary full" onClick={() => {
+              if (window.confirm("Delete all submissions and votes for this round?")) callAdmin("/api/admin/delete-all-submissions");
+            }}>Delete all submissions</button>
+            <button className="secondary full" onClick={() => {
+              const nextRound = window.prompt("Enter a new round name:", "Prompt Olympics");
+              if (nextRound) callAdmin(`/api/admin/start-new-round`, "POST");
+            }}>New round</button>
+            <button className="secondary full" onClick={() => {
+              if (window.confirm("Reset the entire competition and start a fresh round?")) callAdmin("/api/admin/reset-competition");
+            }}>Reset competition</button>
+          </div>
+
+          <div className="card admin-card compact-card">
+            <h3>Current state</h3>
+            <p><strong>State:</strong> {currentRound?.state ?? "WAITING"}</p>
+            <p><strong>Submissions:</strong> {currentRound?.submissions.length ?? 0}</p>
+            <p><strong>Votes:</strong> {currentRound?.votes.length ?? 0}</p>
+            <p><strong>Average:</strong> {currentRound?.leaderboard?.length ? currentRound.leaderboard[0].averageScore.toFixed(1) : "0.0"}</p>
+            <p><strong>Tie rule:</strong> higher average, then more votes, then alphabetical participant name.</p>
+          </div>
+        </div>
+
+        <div className="card admin-table">
+          <h3>Submission list</h3>
+          {!currentRound?.submissions.length ? <p className="sub">No submissions yet.</p> : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Participant</th>
+                  <th>Result</th>
+                  <th>Votes</th>
+                  <th>Average</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentRound.submissions.map((submission) => {
+                  const average = currentRound.votes.filter((vote) => vote.submissionId === submission.id).length
+                    ? currentRound.votes.filter((vote) => vote.submissionId === submission.id).reduce((sum, vote) => sum + Number(vote.overall ?? 0), 0) / currentRound.votes.filter((vote) => vote.submissionId === submission.id).length
+                    : 0;
+                  return <tr key={submission.id}>
+                    <td>{submission.participantName}</td>
+                    <td>{submission.resultText}</td>
+                    <td>{currentRound.votes.filter((vote) => vote.submissionId === submission.id).length}</td>
+                    <td>{average.toFixed(1)}</td>
+                    <td><button className="secondary small-button" onClick={() => {
+                      if (window.confirm(`Delete ${submission.participantName}'s submission and all its votes?`)) {
+                        callAdmin(`/api/admin/delete-submission/${submission.id}`);
+                      }
+                    }}>Delete</button></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </main>
+    )}
+  </div>;
+}
+
+const isAdminRoute = window.location.pathname === "/admin";
+createRoot(document.getElementById("root")!).render(isAdminRoute ? <AdminApp /> : <App />);

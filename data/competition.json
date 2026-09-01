@@ -1,0 +1,38 @@
+{
+  "id": "prompt-olympics",
+  "name": "Prompt Olympics",
+  "currentRoundIndex": 0,
+  "rounds": [
+    {
+      "id": "round_dejur3zv_mtidw5hx",
+      "title": "Prompt Olympics",
+      "roundNumber": 1,
+      "state": "VOTING",
+      "submissions": [
+        {
+          "id": "submission_mbo5epe7_mtidwopr",
+          "participantName": "Alice",
+          "prompt": "A robot cooks noodles at a hawker centre",
+          "resultText": "The noodles got so dramatic they earned a standing ovation.",
+          "createdAt": 1788250049055,
+          "updatedAt": 1788250049055,
+          "roundId": "round_dejur3zv_mtidw5hx"
+        },
+        {
+          "id": "submission_5ual628h_mtidwoq4",
+          "participantName": "Bob",
+          "prompt": "A cat becomes mayor",
+          "resultText": "The cat made a speech with a fish-shaped podium.",
+          "createdAt": 1788250049068,
+          "updatedAt": 1788250049068,
+          "roundId": "round_dejur3zv_mtidw5hx"
+        }
+      ],
+      "votes": [],
+      "createdAt": 1788250024149,
+      "updatedAt": 1788250049088
+    }
+  ],
+  "createdAt": 1788250024149,
+  "updatedAt": 1788250049088
+}
