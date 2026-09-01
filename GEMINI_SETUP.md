@@ -49,19 +49,16 @@ Then visit `http://localhost:10000`
 
 #### Option C: Change the Model (Optional)
 
-By default, the app uses `gemini-pro`. If you want to use a different model:
+By default, the app uses `gemini-3.6-flash`. To set a model explicitly:
 
 ```powershell
-$env:GEMINI_MODEL="gemini-1.5-flash"
+$env:GEMINI_MODEL="gemini-3.6-flash"
 $env:GEMINI_API_KEY="your-api-key-here"
 npm start
 ```
 
 Available models depend on your API key and quota. Common options:
-- `gemini-pro` (most reliable)
-- `gemini-1.5-flash`  
-- `gemini-1.5-pro`
-- `gemini-2.5-flash`
+- `gemini-3.6-flash`
 
 ### Step 4: Test It
 
