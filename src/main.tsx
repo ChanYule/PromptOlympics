@@ -181,8 +181,34 @@ const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
   const [sound,setSound]=useState(true);
   const [admin,setAdmin]=useState(false);
 
-  useEffect(()=>{ try { const raw=localStorage.getItem("promptOlympicsStories"); if(raw)setStories(JSON.parse(raw)); } catch {} },[]);
-  useEffect(()=>{ localStorage.setItem("promptOlympicsStories",JSON.stringify(stories)); },[stories]);
+  useEffect(()=>{
+    try {
+      const raw = localStorage.getItem("promptOlympicsStories");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setStories(parsed);
+    } catch {}
+  }, []);
+
+  useEffect(()=>{
+    try {
+      const safeStories = stories.map((story) => ({
+        id: story.id,
+        author: story.author,
+        theme: story.theme,
+        prompt: story.prompt,
+        title: story.title,
+        text: story.text,
+        promptPower: story.promptPower,
+        ai: story.ai,
+        votes: story.votes,
+        createdAt: story.createdAt,
+      }));
+      localStorage.setItem("promptOlympicsStories", JSON.stringify(safeStories));
+    } catch {
+      // Ignore persistence errors to avoid crashing the app.
+    }
+  }, [stories]);
 
   const analysis=useMemo(()=>promptAnalysis(prompt),[prompt]);
   const activeStory=story ?? storyRef.current;
