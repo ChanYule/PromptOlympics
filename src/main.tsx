@@ -163,6 +163,47 @@ function finalScore(s:Story) {
   return s.ai.overall*.5+human*.5;
 }
 
+function sanitizeStoredStories(value: unknown): Story[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+
+    const story = item as Partial<Story>;
+    const theme = story.theme && typeof story.theme === "object"
+      ? { ...defaultTheme, ...story.theme }
+      : defaultTheme;
+    const ai = story.ai && typeof story.ai === "object"
+      ? {
+          humour: typeof story.ai.humour === "number" ? story.ai.humour : 0,
+          creativity: typeof story.ai.creativity === "number" ? story.ai.creativity : 0,
+          surprise: typeof story.ai.surprise === "number" ? story.ai.surprise : 0,
+          promptQuality: typeof story.ai.promptQuality === "number" ? story.ai.promptQuality : 0,
+          fit: typeof story.ai.fit === "number" ? story.ai.fit : 0,
+          overall: typeof story.ai.overall === "number" ? story.ai.overall : 0,
+          commentary: typeof story.ai.commentary === "string" ? story.ai.commentary : ""
+        }
+      : { humour:0, creativity:0, surprise:0, promptQuality:0, fit:0, overall:0, commentary:"" };
+
+    const votes = Array.isArray(story.votes) ? story.votes.filter((vote): vote is Vote => !!vote && typeof vote === "object" && typeof vote.voter === "string") : [];
+
+    const safeStory: Story = {
+      id: typeof story.id === "string" ? story.id : uid(),
+      author: typeof story.author === "string" ? story.author : "Anonymous",
+      theme,
+      prompt: typeof story.prompt === "string" ? story.prompt : "",
+      title: typeof story.title === "string" ? story.title : "Untitled story",
+      text: typeof story.text === "string" ? story.text : "",
+      promptPower: typeof story.promptPower === "number" ? story.promptPower : 0,
+      ai,
+      votes,
+      createdAt: typeof story.createdAt === "number" ? story.createdAt : Date.now(),
+    };
+
+    return safeStory.prompt && safeStory.text ? [safeStory] : [];
+  });
+}
+
 function App() {
 const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
   const [step,setStep]=useState<"nickname"|"prompt"|"improve"|"generate"|"story">("nickname");
@@ -186,8 +227,14 @@ const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
       const raw = localStorage.getItem("promptOlympicsStories");
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setStories(parsed);
-    } catch {}
+      const sanitized = sanitizeStoredStories(parsed);
+      setStories(sanitized);
+      if (sanitized.length !== (Array.isArray(parsed) ? parsed.length : 0)) {
+        localStorage.setItem("promptOlympicsStories", JSON.stringify(sanitized));
+      }
+    } catch {
+      localStorage.removeItem("promptOlympicsStories");
+    }
   }, []);
 
   useEffect(()=>{
@@ -204,9 +251,13 @@ const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard">("home");
         votes: story.votes,
         createdAt: story.createdAt,
       }));
+      if (!safeStories.length) {
+        localStorage.removeItem("promptOlympicsStories");
+        return;
+      }
       localStorage.setItem("promptOlympicsStories", JSON.stringify(safeStories));
     } catch {
-      // Ignore persistence errors to avoid crashing the app.
+      localStorage.removeItem("promptOlympicsStories");
     }
   }, [stories]);
 

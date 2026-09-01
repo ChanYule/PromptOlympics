@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
+import { DEFAULT_MODEL, normalizeModelName } from "./geminiConfig.js";
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -11,9 +12,8 @@ const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, "dist");
 
 const getModel = () => {
-  // This project documents gemini-2.5-flash as the default working model.
-  // Keep the server aligned with the documented setup to avoid invalid model IDs.
-  return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const configured = process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
+  return normalizeModelName(configured);
 };
 
 function geminiErrorDetails(error) {
