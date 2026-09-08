@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const COMPETITION_STATES = [
+  'OPEN',
   'WAITING',
   'SUBMISSIONS_OPEN',
   'SUBMISSIONS_CLOSED',
@@ -20,7 +21,7 @@ function makeId(prefix = 'item') {
 }
 
 function normalizeState(value) {
-  return COMPETITION_STATES.includes(value) ? value : 'WAITING';
+  return 'OPEN';
 }
 
 function clampRating(value) {
@@ -38,7 +39,7 @@ export function createRound(roundNumber = 1, title = 'Prompt Olympics') {
     id: makeId('round'),
     title: sanitizeText(title, 'Prompt Olympics') || 'Prompt Olympics',
     roundNumber,
-    state: 'WAITING',
+    state: 'OPEN',
     submissions: [],
     votes: [],
     createdAt: Date.now(),
@@ -106,8 +107,7 @@ export function setCompetitionState(store, state) {
 
 export function createSubmission(store, { participantName, prompt, resultText }) {
   const round = getCurrentRound(store);
-  const allowedStates = ['WAITING', 'SUBMISSIONS_OPEN'];
-  if (!allowedStates.includes(round.state)) {
+  if (round.state !== 'OPEN') {
     throw new Error('Submissions are currently closed.');
   }
 
@@ -140,7 +140,7 @@ export function createSubmission(store, { participantName, prompt, resultText })
 
 export function createVote(store, { submissionId, voterSession, ratings, participantName }) {
   const round = getCurrentRound(store);
-  if (round.state !== 'VOTING') {
+  if (round.state !== 'OPEN') {
     throw new Error('Voting is not open.');
   }
 

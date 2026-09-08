@@ -28,6 +28,24 @@ test('creates submissions and tracks round state', () => {
   assert.ok(COMPETITION_STATES.includes(getCurrentRound(store).state));
 });
 
+test('keeps submissions and voting open at the same time', () => {
+  const store = createCompetition();
+  const submission = createSubmission(store, {
+    participantName: 'Alice',
+    prompt: 'A robot cooks noodles at a hawker centre',
+    resultText: 'Funny story.'
+  });
+
+  const vote = createVote(store, {
+    submissionId: submission.id,
+    voterSession: 'Voter 1',
+    ratings: { overall: 5 }
+  });
+
+  assert.equal(getCurrentRound(store).state, 'OPEN');
+  assert.equal(vote.overall, 5);
+});
+
 test('creates a valid vote and prevents duplicates', () => {
   const store = createCompetition();
   setCompetitionState(store, 'SUBMISSIONS_OPEN');

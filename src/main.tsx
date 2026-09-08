@@ -17,7 +17,7 @@ type Story = {
 
 type Vote = { voter:string; funny:number; creative:number; surprise:number; fit:number };
 
-type CompetitionState = "WAITING" | "SUBMISSIONS_OPEN" | "SUBMISSIONS_CLOSED" | "VOTING" | "RESULTS";
+type CompetitionState = "OPEN" | "WAITING" | "SUBMISSIONS_OPEN" | "SUBMISSIONS_CLOSED" | "VOTING" | "RESULTS";
 
 type SubmissionRecord = {
   id: string;
@@ -308,12 +308,6 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    if (competitionState === "VOTING") {
-      setPage("voting");
-    }
-  }, [competitionState]);
-
   const availableSubmissions = (currentRound?.submissions ?? []).filter(
     (submission) => !scoredSubmissionIds.includes(submission.id)
   );
@@ -457,7 +451,7 @@ function App() {
   return <div className={shellClass}>
     <header className="topbar">
       <button className="brand" onClick={()=>nav("home")}><span className="brand-mark">✨</span><span>Prompt <b>Olympics</b></span></button>
-      <nav>{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button className={page===p?"active":""} onClick={()=>{ if (p === "voting" && competitionState !== "VOTING") { setPage("home"); return; } nav(p); }} key={p}>{p==="home"?"Home":p === "voting" ? "Voting" : p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
+      <nav>{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{p==="home"?"Home":p === "voting" ? "Voting" : p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
       <a className="tiny admin-link" href="/admin">⚙️ Admin</a>
     </header>
 
@@ -467,8 +461,8 @@ function App() {
         <h1>Prompt <span>Olympics</span></h1>
         <p>{currentRound ? `Round ${currentRound.roundNumber}: ${currentRound.title}` : "Round 1"}</p>
         <div className="hero-actions">
-          {competitionState === "SUBMISSIONS_OPEN" && <button className="primary" onClick={startPlay}>🚀 Join the challenge</button>}
-          {competitionState === "VOTING" && <button className="primary" onClick={()=>setPage("voting")}>⭐ Enter Voting Mode</button>}
+          <button className="primary" onClick={startPlay}>🚀 Join the challenge</button>
+          <button className="secondary" onClick={()=>setPage("voting")}>⭐ Enter Voting Mode</button>
           {competitionState === "RESULTS" && <button className="primary" onClick={()=>setPage("leaderboard")}>🏆 View leaderboard</button>}
           {competitionState === "WAITING" && <button className="secondary" onClick={()=>setPage("play")}>⏳ Waiting for round start</button>}
         </div>
@@ -482,19 +476,18 @@ function App() {
 
     {page === "play" && <main className="game">
       <div className="progress"><span>PLAY</span><div><i style={{width:`${({nickname:25,prompt:50,improve:70,generate:85,story:100} as Record<string,number>)[step]}%`}}/></div><span>{step.toUpperCase()}</span></div>
-      {competitionState !== "SUBMISSIONS_OPEN" && competitionState !== "WAITING" ? <Card icon="⏳" title="Submissions are unavailable" sub="The organiser has closed the current submission round."><button className="primary full" onClick={()=>setPage("home")}>← Back home</button></Card> : null}
-      {competitionState === "SUBMISSIONS_OPEN" && step === "nickname" && <Card icon="👋" title="Choose a nickname" sub="Pick a name to enter the competition."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("prompt")}>Continue →</button></Card>}
-      {competitionState === "SUBMISSIONS_OPEN" && step === "prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} onImprove={()=>setStep("improve")} onGenerate={generate} error={generationError} isGenerating={isGenerating}/>} 
-      {competitionState === "SUBMISSIONS_OPEN" && step === "improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>} 
-      {competitionState === "SUBMISSIONS_OPEN" && step === "generate" && <Card icon="🤖" title={loading} sub="Your idea is being turned into a story…"><div className="loader"><div>🏃</div><p>Writing your story…</p></div></Card>}
-      {competitionState === "SUBMISSIONS_OPEN" && step === "story" && activeStory && <StoryCard story={activeStory} onRegenerate={()=>generate(true)} onBackToPrompt={()=>setStep("prompt")} error={generationError}/>} 
-      {competitionState === "SUBMISSIONS_OPEN" && step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
+      {step === "nickname" && <Card icon="👋" title="Choose a nickname" sub="Pick a name to enter the competition."><div className="nickbox"><input value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("prompt")}>Continue →</button></Card>}
+      {step === "prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} onImprove={()=>setStep("improve")} onGenerate={generate} error={generationError} isGenerating={isGenerating}/>} 
+      {step === "improve" && <Improve prompt={prompt} setPrompt={setPrompt} analysis={analysis} onBack={()=>setStep("prompt")} onGenerate={generate}/>} 
+      {step === "generate" && <Card icon="🤖" title={loading} sub="Your idea is being turned into a story…"><div className="loader"><div>🏃</div><p>Writing your story…</p></div></Card>}
+      {step === "story" && activeStory && <StoryCard story={activeStory} onRegenerate={()=>generate(true)} onBackToPrompt={()=>setStep("prompt")} error={generationError}/>} 
+      {step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
     </main>}
 
     {page === "gallery" && <Gallery stories={stories}/>} 
     {page === "leaderboard" && <Leaderboard stories={stories} />} 
 
-    {page === "voting" && competitionState === "VOTING" && (
+    {page === "voting" && (
       <main className="content voting-screen">
         <div className="page-title compact">
           <div>
@@ -678,10 +671,6 @@ function AdminApp() {
           </div>
           <div className="row small-row">
             <button className="secondary" onClick={() => window.location.href = "/"}>Back to event</button>
-            <button className="primary" onClick={() => callAdmin("/api/admin/start-submissions")}>Open submissions</button>
-            <button className="secondary" onClick={() => callAdmin("/api/admin/close-submissions")}>Close submissions</button>
-            <button className="primary" onClick={() => callAdmin("/api/admin/start-voting")}>Start voting</button>
-            <button className="secondary" onClick={() => callAdmin("/api/admin/end-voting")}>End voting</button>
           </div>
         </div>
 
