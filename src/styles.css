@@ -150,6 +150,8 @@ button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 .submission-meta strong { color: var(--teal); }
 .submission-panel h2 { margin: 18px 0 8px; font-size: 25px; }
 .submission-panel p { margin: 0; color: #d2dad4; line-height: 1.75; white-space: pre-line; }
+.ai-score { margin-top: 20px; }
+.ai-score > span { display: block; margin-bottom: 8px; color: var(--quiet); font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
 .rating-area { margin: 25px 0; }
 .rating-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .rating-label { color: var(--muted); font-weight: 700; }

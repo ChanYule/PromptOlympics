@@ -11,6 +11,7 @@ import {
   getCurrentRound,
   buildLeaderboard,
   getAverageScore,
+  scoreSubmission,
   setCompetitionState,
   COMPETITION_STATES
 } from './competitionStore.js';
@@ -26,6 +27,54 @@ test('creates submissions and tracks round state', () => {
   assert.equal(submission.participantName, 'Alice');
   assert.equal(getCurrentRound(store).submissions.length, 1);
   assert.ok(COMPETITION_STATES.includes(getCurrentRound(store).state));
+});
+
+test('scoreSubmission rewards funny, creative and on-topic text', () => {
+  const bland = scoreSubmission('A robot cooks noodles', 'It happened.', 'Creative Story');
+  const strong = scoreSubmission(
+    'A robot cooks noodles at a hawker centre',
+    'The hilarious robot noodles took an unexpected, creative twist that surprised everyone at the hawker centre.',
+    'Creative Story'
+  );
+
+  assert.ok(strong.funny > bland.funny);
+  assert.ok(strong.creativity > bland.creativity);
+  assert.ok(strong.relevance > bland.relevance);
+  assert.ok(strong.overall > bland.overall);
+});
+
+test('scores a submission on funny, creativity and relevance as soon as it is created', () => {
+  const store = createCompetition();
+  const submission = createSubmission(store, {
+    participantName: 'Alice',
+    prompt: 'A robot cooks noodles at a hawker centre',
+    resultText: 'The absurd, hilarious robot improvised a twist ending with the noodles.'
+  });
+
+  assert.ok(submission.aiScore);
+  for (const key of ['funny', 'creativity', 'relevance', 'overall']) {
+    assert.ok(submission.aiScore[key] >= 0 && submission.aiScore[key] <= 10);
+  }
+
+  const leaderboard = buildLeaderboard(getCurrentRound(store));
+  assert.equal(leaderboard[0].voteCount, 0);
+  assert.equal(leaderboard[0].finalScore, submission.aiScore.overall);
+});
+
+test('blends the AI score and human votes into a final score once votes exist', () => {
+  const store = createCompetition();
+  const submission = createSubmission(store, {
+    participantName: 'Alice',
+    prompt: 'A robot cooks noodles at a hawker centre',
+    resultText: 'Funny story.'
+  });
+  createVote(store, { submissionId: submission.id, voterSession: 'Voter 1', ratings: { overall: 5 } });
+
+  const leaderboard = buildLeaderboard(getCurrentRound(store));
+  const entry = leaderboard[0];
+  const expectedHuman = ((entry.averageScore - 1) / 4) * 10;
+  const expectedFinal = Number((entry.aiScore.overall * 0.5 + expectedHuman * 0.5).toFixed(2));
+  assert.equal(entry.finalScore, expectedFinal);
 });
 
 test('keeps submissions and voting open at the same time', () => {

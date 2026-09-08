@@ -34,6 +34,33 @@ function sanitizeText(value, fallback = '') {
   return typeof value === 'string' ? value.trim() : fallback;
 }
 
+const FUNNY_PATTERN = /\b(funny|joke|laugh|absurd|silly|ridiculous|chaos|oops|pun|giggle|hilarious|comedy)\b/gi;
+const CREATIVITY_PATTERN = /\b(creative|unexpected|twist|clever|surprising|wild|strange|oddball|inventive|impossible|magical|bizarre)\b/gi;
+
+function clampScore(value) {
+  return Number(Math.max(0, Math.min(10, value)).toFixed(1));
+}
+
+// Heuristic "AI judge": scores a submission on funny/creativity/relevance as soon as it is created,
+// before any human votes exist. Human votes are blended in later once they arrive.
+export function scoreSubmission(prompt, resultText, theme = '') {
+  const text = sanitizeText(resultText, '').toLowerCase();
+  const promptWords = sanitizeText(prompt, '').toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const themeWords = sanitizeText(theme, '').toLowerCase().match(/[a-z0-9]+/g) ?? [];
+
+  const funnyHits = (text.match(FUNNY_PATTERN) ?? []).length;
+  const creativityHits = (text.match(CREATIVITY_PATTERN) ?? []).length;
+  const promptMatches = promptWords.filter((word) => word.length > 3 && text.includes(word)).length;
+  const themeMatches = themeWords.filter((word) => word.length > 3 && text.includes(word)).length;
+
+  const funny = clampScore(3 + funnyHits * 1.1 + (text.length > 80 ? 1 : 0));
+  const creativity = clampScore(2.5 + creativityHits * 1.2 + (text.length > 120 ? 1 : 0));
+  const relevance = clampScore(2 + promptMatches * 1.1 + themeMatches * 0.8);
+  const overall = clampScore((funny + creativity + relevance) / 3);
+
+  return { funny, creativity, relevance, overall };
+}
+
 export function createRound(roundNumber = 1, title = 'Prompt Olympics') {
   return {
     id: makeId('round'),
@@ -105,7 +132,7 @@ export function setCompetitionState(store, state) {
   return round;
 }
 
-export function createSubmission(store, { participantName, prompt, resultText }) {
+export function createSubmission(store, { participantName, prompt, resultText, theme }) {
   const round = getCurrentRound(store);
 
   const cleanedName = sanitizeText(participantName, '');
@@ -124,6 +151,7 @@ export function createSubmission(store, { participantName, prompt, resultText })
     participantName: cleanedName,
     prompt: cleanedPrompt,
     resultText: cleanedResult,
+    aiScore: scoreSubmission(cleanedPrompt, cleanedResult, theme),
     createdAt: Date.now(),
     updatedAt: Date.now(),
     roundId: round.id
@@ -249,20 +277,30 @@ export function buildLeaderboard(round) {
       const averageScore = votes.length
         ? Number((votes.reduce((sum, vote) => sum + Number(vote.overall ?? vote.ratings?.overall ?? 0), 0) / votes.length).toFixed(2))
         : 0;
+      const aiScore = submission.aiScore ?? scoreSubmission(submission.prompt, submission.resultText, submission.theme);
+      // Votes are collected on a 1-5 scale; rescale to 0-10 so they blend evenly with the AI score.
+      const humanScore = votes.length ? Number((((averageScore - 1) / 4) * 10).toFixed(2)) : 0;
+      const finalScore = votes.length
+        ? Number((aiScore.overall * 0.5 + humanScore * 0.5).toFixed(2))
+        : aiScore.overall;
 
       return {
         submissionId: submission.id,
         participantName: submission.participantName,
         prompt: submission.prompt,
         resultText: submission.resultText,
+        title: submission.title ?? '',
+        theme: submission.theme ?? '',
+        aiScore,
         averageScore,
         voteCount: votes.length,
+        finalScore,
         createdAt: submission.createdAt
       };
     })
     .sort((a, b) => {
-      // Tie-break rule: higher average wins; if tied, more votes wins; if still tied, alphabetical name for a stable order.
-      if (b.averageScore !== a.averageScore) return b.averageScore - a.averageScore;
+      // Tie-break rule: higher final score (AI + votes) wins; if tied, more votes wins; if still tied, alphabetical name for a stable order.
+      if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
       if (b.voteCount !== a.voteCount) return b.voteCount - a.voteCount;
       return a.participantName.localeCompare(b.participantName);
     });

@@ -19,6 +19,8 @@ type Vote = { voter:string; funny:number; creative:number; surprise:number; fit:
 
 type CompetitionState = "OPEN" | "WAITING" | "SUBMISSIONS_OPEN" | "SUBMISSIONS_CLOSED" | "VOTING" | "RESULTS";
 
+type AiScore = { funny: number; creativity: number; relevance: number; overall: number };
+
 type SubmissionRecord = {
   id: string;
   participantName: string;
@@ -26,6 +28,7 @@ type SubmissionRecord = {
   resultText: string;
   title?: string;
   theme?: string;
+  aiScore?: AiScore;
   createdAt: number;
   roundId?: string;
 };
@@ -43,6 +46,20 @@ type VoteRecord = {
   };
 };
 
+type LeaderboardEntry = {
+  submissionId: string;
+  participantName: string;
+  prompt: string;
+  resultText: string;
+  title?: string;
+  theme?: string;
+  aiScore: AiScore;
+  averageScore: number;
+  voteCount: number;
+  finalScore: number;
+  createdAt: number;
+};
+
 type CompetitionRound = {
   id: string;
   title: string;
@@ -50,7 +67,7 @@ type CompetitionRound = {
   state: CompetitionState;
   submissions: SubmissionRecord[];
   votes: VoteRecord[];
-  leaderboard: Array<{ submissionId:string; participantName:string; prompt:string; resultText:string; averageScore:number; voteCount:number; createdAt:number; }>;
+  leaderboard: LeaderboardEntry[];
 };
 
 type CompetitionResponse = {
@@ -195,13 +212,6 @@ function buildStory(theme:Theme, prompt: string, text: string) {
   };
 }
 
-function finalScore(s:Story) {
-  if (!s.votes.length) return s.ai.overall;
-  const avg=s.votes.reduce((a,v)=>a+(v.funny+v.creative+v.surprise+v.fit)/4,0)/s.votes.length;
-  const human=((avg-1)/4)*10;
-  return s.ai.overall*.5+human*.5;
-}
-
 function sanitizeStoredStories(value: unknown): Story[] {
   if (!Array.isArray(value)) return [];
 
@@ -260,7 +270,6 @@ function App() {
   const [prompt,setPrompt]=useState("");
   const [story,setStory]=useState<Story|null>(null);
   const storyRef=useRef<Story|null>(null);
-  const [stories,setStories]=useState<Story[]>([]);
   const [loading,setLoading]=useState("🤖 AI is warming up…");
   const [generationError,setGenerationError]=useState("");
   const [isGenerating,setIsGenerating]=useState(false);
@@ -290,20 +299,6 @@ function App() {
     try {
       const result = await fetchJson<CompetitionResponse>("/api/competition");
       setCompetition(result);
-      const serverStories = result.competition?.currentRound?.submissions ?? [];
-      const normalizedStories = serverStories.map((item) => ({
-        id: item.id,
-        author: item.participantName,
-        theme: { ...defaultTheme, title: item.theme ?? defaultTheme.title },
-        prompt: item.prompt,
-        title: item.title ?? "Prompt Olympics Result",
-        text: item.resultText,
-        promptPower: 0,
-        ai: { humour: 0, creativity: 0, surprise: 0, promptQuality: 0, fit: 0, overall: 0, commentary: "" },
-        votes: [],
-        createdAt: item.createdAt,
-      }));
-      setStories(normalizedStories);
     } catch (error) {
       console.error("Could not load competition", error);
     }
@@ -358,7 +353,6 @@ function App() {
       };
       storyRef.current=submissionStory;
       setStory(submissionStory);
-      setStories(prev=>regenerate && activeStory ? prev.map(existing=>existing.id===activeStory.id?submissionStory:existing) : [submissionStory,...prev]);
       setStep("story");
 
       const competitionSave = await fetchJson<{ ok: boolean; submission: SubmissionRecord; round: CompetitionRound }>("/api/submissions", {
@@ -486,8 +480,8 @@ function App() {
       {step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
     </main>}
 
-    {page === "gallery" && <Gallery stories={stories} onOpen={(submissionId) => { setSelectedSubmissionId(submissionId); setPage("voting"); }}/>}
-    {page === "leaderboard" && <Leaderboard stories={stories} />} 
+    {page === "gallery" && <Gallery entries={currentRound?.leaderboard ?? []} onOpen={(submissionId) => { setSelectedSubmissionId(submissionId); setPage("voting"); }}/>}
+    {page === "leaderboard" && <Leaderboard entries={currentRound?.leaderboard ?? []} />}
 
     {page === "voting" && (
       <main className="content voting-screen">
@@ -540,6 +534,17 @@ function App() {
               </div>
               <h2>{currentCandidate.title ?? "Prompt Olympics Result"}</h2>
               <p>{currentCandidate.resultText}</p>
+              {currentCandidate.aiScore && (
+                <div className="ai-score">
+                  <span>🤖 AI score (judged before voting)</span>
+                  <div className="chips">
+                    <span>😂 Funny {currentCandidate.aiScore.funny.toFixed(1)}</span>
+                    <span>💡 Creativity {currentCandidate.aiScore.creativity.toFixed(1)}</span>
+                    <span>🎯 Relevance {currentCandidate.aiScore.relevance.toFixed(1)}</span>
+                    <span>⭐ Overall {currentCandidate.aiScore.overall.toFixed(1)}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="rating-area">
@@ -598,13 +603,13 @@ function Improve({prompt,setPrompt,analysis,onBack,onGenerate}:{prompt:string,se
 function StoryCard({story,onRegenerate,onBackToPrompt,error}:{story:Story,onRegenerate:()=>void,onBackToPrompt:()=>void,error:string}) {
   return <section className="card story-card"><div className="story-meta"><span>{story.theme.icon} {story.theme.title}</span><span>✨ Story ready</span></div><h2>{story.title}</h2><p className="story-text">{story.text}</p>{error && <p className="generation-error" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onRegenerate}>🔄 Regenerate Story</button><button className="primary full" onClick={onBackToPrompt}>✍️ Write Another Story</button></section>
 }
-function Gallery({stories,onOpen}:{stories:Story[],onOpen:(submissionId:string)=>void}) {
- const [sort,setSort]=useState("top"); const sorted=[...stories].sort((a,b)=>sort==="latest"?b.createdAt-a.createdAt:finalScore(b)-finalScore(a));
- return <main className="content"><div className="page-title"><div><span>📖 HALL OF FAME</span><h1>Stories worth<br/><em>remembering.</em></h1></div><div className="tabs">{["top","latest"].map(x=><button className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x}</button>)}</div></div>{!sorted.length?<div className="empty"><div>🏆</div><h2>Be the first Prompt Olympian!</h2><p>Create the first story and it will appear here.</p></div>:<div className="story-grid">{sorted.map(s=><button className="mini-story" key={s.id} onClick={()=>onOpen(s.id)} type="button" aria-label={`Read ${s.title} and vote`}><div><span>{s.theme.icon} {s.theme.title}</span><b>{finalScore(s).toFixed(1)}</b></div><h3>{s.title}</h3><p>{s.text}</p><small>by {s.author} · 🔥 {s.promptPower} · {s.votes.length} votes · Read and vote</small></button>)}</div>}</main>
+function Gallery({entries,onOpen}:{entries:LeaderboardEntry[],onOpen:(submissionId:string)=>void}) {
+ const [sort,setSort]=useState("top"); const sorted=[...entries].sort((a,b)=>sort==="latest"?b.createdAt-a.createdAt:b.finalScore-a.finalScore);
+ return <main className="content"><div className="page-title"><div><span>📖 HALL OF FAME</span><h1>Stories worth<br/><em>remembering.</em></h1></div><div className="tabs">{["top","latest"].map(x=><button className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x}</button>)}</div></div>{!sorted.length?<div className="empty"><div>🏆</div><h2>Be the first Prompt Olympian!</h2><p>Create the first story and it will appear here.</p></div>:<div className="story-grid">{sorted.map(s=><button className="mini-story" key={s.submissionId} onClick={()=>onOpen(s.submissionId)} type="button" aria-label={`Read ${s.title || "this entry"} and vote`}><div><span>✨ {s.theme || defaultTheme.title}</span><b>{s.finalScore.toFixed(1)}</b></div><h3>{s.title || "Prompt Olympics Result"}</h3><p>{s.resultText}</p><small>by {s.participantName} · 🤖 AI {s.aiScore.overall.toFixed(1)} · 🗳️ {s.voteCount} votes · Read and vote</small></button>)}</div>}</main>
 }
-function Leaderboard({stories}:{stories:Story[]}) {
- const sorted=[...stories].sort((a,b)=>finalScore(b)-finalScore(a));
- return <main className="content"><div className="page-title"><div><span>🥇 LEADERBOARD</span><h1>Who will take<br/><em>the podium?</em></h1></div></div>{!sorted.length?<div className="empty"><div>🏆</div><h2>The podium is waiting.</h2><p>Be the first Prompt Olympian to claim gold.</p></div>:<div className="leader">{sorted.map((s,i)=><div className="leader-row" key={s.id}><strong>{i+1===1?"🥇":i+1===2?"🥈":i+1===3?"🥉":`#${i+1}`}</strong><span>{s.author}<small>{s.title}</small></span><b>{finalScore(s).toFixed(1)}</b></div>)}</div>}</main>
+function Leaderboard({entries}:{entries:LeaderboardEntry[]}) {
+ const sorted=[...entries].sort((a,b)=>b.finalScore-a.finalScore);
+ return <main className="content"><div className="page-title"><div><span>🥇 LEADERBOARD</span><h1>Who will take<br/><em>the podium?</em></h1></div></div>{!sorted.length?<div className="empty"><div>🏆</div><h2>The podium is waiting.</h2><p>Be the first Prompt Olympian to claim gold.</p></div>:<div className="leader">{sorted.map((s,i)=><div className="leader-row" key={s.submissionId}><strong>{i+1===1?"🥇":i+1===2?"🥈":i+1===3?"🥉":`#${i+1}`}</strong><span>{s.participantName}<small>🤖 AI {s.aiScore.overall.toFixed(1)} · 🗳️ Votes {s.voteCount}</small></span><b>{s.finalScore.toFixed(1)}</b></div>)}</div>}</main>
 }
 
 function AdminApp() {
