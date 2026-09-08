@@ -216,20 +216,29 @@ app.post("/api/generate-story", async (req, res) => {
   }
 
   try {
-    const storyPrompt = `Make this idea into a funny story in 100 words or fewer. Return only the story.\n\nIdea: ${prompt}`;
+    const storyPrompt = `Make this idea into a funny story in 100 words or fewer. Also write a short, punchy title (5 words or fewer) that is directly relevant to what actually happens in the story. Respond in exactly this format with nothing else:\nTitle: <title>\nStory: <story>\n\nIdea: ${prompt}`;
 
-    const text = await generateGeminiText(storyPrompt, {
-      systemInstruction: "Make the story funny and keep it to 100 words or fewer. Return only the story.",
+    const raw = await generateGeminiText(storyPrompt, {
+      systemInstruction: "Make the story funny and keep it to 100 words or fewer. Always answer with a 'Title:' line followed by a 'Story:' line, in that order, with no extra commentary. The title must be short, punchy, and specific to the story's events - never generic.",
       temperature: 1,
       thinkingConfig: { thinkingLevel: "low" },
       maxOutputTokens: 5_000
     });
+    if (!raw) {
+      console.error("Gemini returned no story text.");
+      return res.status(502).json({ error: "Gemini returned an empty response." });
+    }
+
+    const titleMatch = raw.match(/title:\s*(.+)/i);
+    const storyMatch = raw.match(/story:\s*([\s\S]+)/i);
+    const title = titleMatch ? titleMatch[1].trim().replace(/^["'*]+|["'*]+$/g, "") : "";
+    const text = storyMatch ? storyMatch[1].trim() : raw.trim();
     if (!text) {
       console.error("Gemini returned no story text.");
       return res.status(502).json({ error: "Gemini returned an empty response." });
     }
 
-    return res.json({ text });
+    return res.json({ text, title });
   } catch (error) {
     const details = geminiErrorDetails(error);
     console.error("Gemini story request failed:", details);

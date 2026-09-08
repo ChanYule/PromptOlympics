@@ -284,9 +284,7 @@ function App() {
   const [voteError,setVoteError]=useState("");
   const [voteSuccess,setVoteSuccess]=useState("");
   const [isSubmittingVote,setIsSubmittingVote]=useState(false);
-  const [scoredSubmissionIds,setScoredSubmissionIds]=useState<string[]>([]);
   const [selectedSubmissionId,setSelectedSubmissionId]=useState<string|null>(null);
-  const [voterNumber,setVoterNumber]=useState(1);
 
   const competitionState = competition?.state ?? "WAITING";
   const currentRound = competition?.competition?.currentRound ?? null;
@@ -304,10 +302,7 @@ function App() {
     }
   }
 
-  const availableSubmissions = (currentRound?.submissions ?? []).filter(
-    (submission) => !scoredSubmissionIds.includes(submission.id)
-  );
-  const currentCandidate = availableSubmissions.find((submission) => submission.id === selectedSubmissionId) ?? availableSubmissions[0] ?? null;
+  const currentCandidate = (currentRound?.submissions ?? []).find((submission) => submission.id === selectedSubmissionId) ?? null;
 
   const analysis=useMemo(()=>promptAnalysis(prompt),[prompt]);
   const activeStory=story ?? storyRef.current;
@@ -339,12 +334,14 @@ function App() {
       }
       clearInterval(timer); window.clearTimeout(timeout);
       const g=buildStory(theme,prompt,payload.text.trim());
+      const aiTitle = typeof payload.title === "string" ? payload.title.trim() : "";
+      const title = aiTitle || g.title;
       const submissionStory:Story={
         id: regenerate && activeStory ? activeStory.id : uid(),
         author:nickname.trim(),
         theme,
         prompt,
-        title:g.title,
+        title,
         text:g.text,
         promptPower:g.promptPower,
         ai:g.ai,
@@ -361,7 +358,7 @@ function App() {
           participantName: nickname.trim(),
           prompt,
           resultText: g.text,
-          title: g.title,
+          title,
           theme: theme.title
         })
       });
@@ -382,16 +379,9 @@ function App() {
   const shellClass=`app ${largeText?"large-text":""} ${highContrast?"contrast":""} ${reduced?"reduced":""}`;
   const nav=(p:typeof page)=>{setPage(p); if(p==="play")startPlay();};
 
-  function resetCurrentVoter() {
-    setScoredSubmissionIds([]);
-    setVoteError("");
-    setVoteSuccess("");
-    setVoteRatings(defaultRatings);
-  }
-
   async function handleVoteSubmit() {
     if (!currentCandidate) {
-      setVoteError("No more submissions to score.");
+      setVoteError("Pick an entry from the gallery first.");
       return;
     }
     if (!voteRatings.overall) {
@@ -406,7 +396,7 @@ function App() {
     setIsSubmittingVote(true);
     setVoteError("");
     try {
-      await fetchJson<{ ok: boolean }>("/api/votes", {
+      const result = await fetchJson<{ ok: boolean; round: CompetitionRound }>("/api/votes", {
         method: "POST",
         body: JSON.stringify({
           submissionId: currentCandidate.id,
@@ -421,20 +411,12 @@ function App() {
           }
         })
       });
-      setVoteSuccess("Vote recorded!");
-      setScoredSubmissionIds((prev) => [...prev, currentCandidate.id]);
-      setSelectedSubmissionId(null);
-      setVoteRatings(defaultRatings);
-      const nextRound = availableSubmissions.filter((submission) => submission.id !== currentCandidate.id);
-      if (nextRound.length === 0) {
-        setVoteSessionId(`Voter ${voterNumber + 1}`);
-        setVoteName(`Voter ${voterNumber + 1}`);
-        setVoterNumber((value) => value + 1);
-        setTimeout(() => {
-          setScoredSubmissionIds([]);
-          setVoteSuccess("Voter complete. Pass the device to the next voter.");
-        }, 700);
+      // Use the round returned by the vote itself so the leaderboard updates instantly, without a second fetch.
+      if (result.round) {
+        setCompetition((prev) => prev ? { ...prev, competition: { ...prev.competition, currentRound: result.round } } : prev);
       }
+      setVoteSuccess("Vote recorded!");
+      setVoteRatings(defaultRatings);
     } catch (error) {
       setVoteError(error instanceof Error ? error.message : "The vote could not be saved. Please try again.");
     } finally {
@@ -458,7 +440,7 @@ function App() {
         <p>{currentRound ? `Round ${currentRound.roundNumber}: ${currentRound.title}` : "Round 1"}</p>
         <div className="hero-actions">
           <button className="primary" onClick={startPlay}>🚀 Join the challenge</button>
-          <button className="secondary" onClick={()=>setPage("voting")}>⭐ Enter Voting Mode</button>
+          <button className="secondary" onClick={()=>setPage("gallery")}>⭐ Choose an entry to vote</button>
           {competitionState === "RESULTS" && <button className="primary" onClick={()=>setPage("leaderboard")}>🏆 View leaderboard</button>}
           {competitionState === "WAITING" && <button className="secondary" onClick={()=>setPage("play")}>⏳ Waiting for round start</button>}
         </div>
@@ -495,19 +477,10 @@ function App() {
 
         {!currentCandidate ? (
           <section className="card centered voting-empty">
-            <div className="bigicon">✅</div>
-            <h2>Voting complete for this session.</h2>
-            <p className="sub">All entries in this round have been scored by {voteSessionId}.</p>
-            <button className="primary full" onClick={() => {
-              const next = `Voter ${voterNumber + 1}`;
-              setVoterNumber((value) => value + 1);
-              setVoteSessionId(next);
-              setVoteName(next);
-              setScoredSubmissionIds([]);
-              setVoteSuccess("Next voter ready.");
-              setVoteError("");
-              setVoteRatings(defaultRatings);
-            }}>➡️ Next voter</button>
+            <div className="bigicon">🗳️</div>
+            <h2>Pick an entry to vote on.</h2>
+            <p className="sub">Open any result from the gallery and rate it from there — no need to go through every entry.</p>
+            <button className="primary full" onClick={() => setPage("gallery")}>📖 Browse gallery</button>
           </section>
         ) : (
           <section className="card voting-card">
@@ -517,8 +490,8 @@ function App() {
                 <h3>{voteSessionId}</h3>
               </div>
               <div>
-                <small>Progress</small>
-                <h3>{availableSubmissions.length} remaining</h3>
+                <small>Entry theme</small>
+                <h3>{currentCandidate.theme || "Creative Story"}</h3>
               </div>
             </div>
 
@@ -529,7 +502,7 @@ function App() {
 
             <div className="submission-panel">
               <div className="submission-meta">
-                <span>Result {Math.max(1, (currentRound?.submissions.length ?? 0) - availableSubmissions.length + 1)} of {currentRound?.submissions.length ?? 0}</span>
+                <span>Prompt Olympics Result</span>
                 <strong>{currentCandidate.participantName}</strong>
               </div>
               <h2>{currentCandidate.title ?? "Prompt Olympics Result"}</h2>
