@@ -276,6 +276,7 @@ function App() {
   const [voteSuccess,setVoteSuccess]=useState("");
   const [isSubmittingVote,setIsSubmittingVote]=useState(false);
   const [scoredSubmissionIds,setScoredSubmissionIds]=useState<string[]>([]);
+  const [selectedSubmissionId,setSelectedSubmissionId]=useState<string|null>(null);
   const [voterNumber,setVoterNumber]=useState(1);
 
   const competitionState = competition?.state ?? "WAITING";
@@ -311,7 +312,7 @@ function App() {
   const availableSubmissions = (currentRound?.submissions ?? []).filter(
     (submission) => !scoredSubmissionIds.includes(submission.id)
   );
-  const currentCandidate = availableSubmissions[0] ?? null;
+  const currentCandidate = availableSubmissions.find((submission) => submission.id === selectedSubmissionId) ?? availableSubmissions[0] ?? null;
 
   const analysis=useMemo(()=>promptAnalysis(prompt),[prompt]);
   const activeStory=story ?? storyRef.current;
@@ -428,6 +429,7 @@ function App() {
       });
       setVoteSuccess("Vote recorded!");
       setScoredSubmissionIds((prev) => [...prev, currentCandidate.id]);
+      setSelectedSubmissionId(null);
       setVoteRatings(defaultRatings);
       const nextRound = availableSubmissions.filter((submission) => submission.id !== currentCandidate.id);
       if (nextRound.length === 0) {
@@ -484,7 +486,7 @@ function App() {
       {step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
     </main>}
 
-    {page === "gallery" && <Gallery stories={stories}/>} 
+    {page === "gallery" && <Gallery stories={stories} onOpen={(submissionId) => { setSelectedSubmissionId(submissionId); setPage("voting"); }}/>}
     {page === "leaderboard" && <Leaderboard stories={stories} />} 
 
     {page === "voting" && (
@@ -492,8 +494,9 @@ function App() {
         <div className="page-title compact">
           <div>
             <span>⭐ VOTING MODE</span>
-            <h1>Rate the entries.</h1>
+            <h1>{selectedSubmissionId ? "Rate this entry." : "Rate the entries."}</h1>
           </div>
+          {selectedSubmissionId && <button className="secondary" onClick={() => { setSelectedSubmissionId(null); setPage("gallery"); }}>← Back to gallery</button>}
         </div>
 
         {!currentCandidate ? (
@@ -595,9 +598,9 @@ function Improve({prompt,setPrompt,analysis,onBack,onGenerate}:{prompt:string,se
 function StoryCard({story,onRegenerate,onBackToPrompt,error}:{story:Story,onRegenerate:()=>void,onBackToPrompt:()=>void,error:string}) {
   return <section className="card story-card"><div className="story-meta"><span>{story.theme.icon} {story.theme.title}</span><span>✨ Story ready</span></div><h2>{story.title}</h2><p className="story-text">{story.text}</p>{error && <p className="generation-error" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onRegenerate}>🔄 Regenerate Story</button><button className="primary full" onClick={onBackToPrompt}>✍️ Write Another Story</button></section>
 }
-function Gallery({stories}:{stories:Story[]}) {
+function Gallery({stories,onOpen}:{stories:Story[],onOpen:(submissionId:string)=>void}) {
  const [sort,setSort]=useState("top"); const sorted=[...stories].sort((a,b)=>sort==="latest"?b.createdAt-a.createdAt:finalScore(b)-finalScore(a));
- return <main className="content"><div className="page-title"><div><span>📖 HALL OF FAME</span><h1>Stories worth<br/><em>remembering.</em></h1></div><div className="tabs">{["top","latest"].map(x=><button className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x}</button>)}</div></div>{!sorted.length?<div className="empty"><div>🏆</div><h2>Be the first Prompt Olympian!</h2><p>Create the first story and it will appear here.</p></div>:<div className="story-grid">{sorted.map(s=><article className="mini-story" key={s.id}><div><span>{s.theme.icon} {s.theme.title}</span><b>{finalScore(s).toFixed(1)}</b></div><h3>{s.title}</h3><p>{s.text}</p><small>by {s.author} · 🔥 {s.promptPower} · {s.votes.length} votes</small></article>)}</div>}</main>
+ return <main className="content"><div className="page-title"><div><span>📖 HALL OF FAME</span><h1>Stories worth<br/><em>remembering.</em></h1></div><div className="tabs">{["top","latest"].map(x=><button className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x}</button>)}</div></div>{!sorted.length?<div className="empty"><div>🏆</div><h2>Be the first Prompt Olympian!</h2><p>Create the first story and it will appear here.</p></div>:<div className="story-grid">{sorted.map(s=><button className="mini-story" key={s.id} onClick={()=>onOpen(s.id)} type="button" aria-label={`Read ${s.title} and vote`}><div><span>{s.theme.icon} {s.theme.title}</span><b>{finalScore(s).toFixed(1)}</b></div><h3>{s.title}</h3><p>{s.text}</p><small>by {s.author} · 🔥 {s.promptPower} · {s.votes.length} votes · Read and vote</small></button>)}</div>}</main>
 }
 function Leaderboard({stories}:{stories:Story[]}) {
  const sorted=[...stories].sort((a,b)=>finalScore(b)-finalScore(a));

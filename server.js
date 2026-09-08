@@ -220,22 +220,10 @@ app.post("/api/generate-story", async (req, res) => {
   }
 
   try {
-    const detailedPrompt = `
-//     You are a witty Singaporean comedian and professional short-story writer crafting a funny story for a general audience. Keep the humour natural, playful, and distinctly Singaporean without forcing slang into every sentence. Use Singaporean flavour only where it fits naturally: family dynamics, hawker-centre energy, MRT moments, HDB life, queue culture, kopitiam situations, and reactions like "wah", "aiyo", "jialat", "siao", or "can lah". But do not randomly add Singaporean offices, WhatsApp groups, management meetings, overtime, or workplace stories unless the user's idea clearly calls for them.
+    const storyPrompt = `Make this idea into a funny story in 100 words or fewer. Return only the story.\n\nIdea: ${prompt}`;
 
-// The user's original premise must remain the core of the story. The idea is the foundation. Keep the main elements recognisable and central to the story. The Singaporean humour should enhance the premise, not replace it.
-
-// Write a complete mini-story that feels like a sharp, funny Singaporean storyteller performing for a broad audience. Use a clear hook, quick setup, build-up, escalation, twist, and punchline. Build the comedy from the original premise itself through misunderstandings, literal interpretations, awkward consequences, character contrast, escalation, irony, and a surprising but logical ending. Keep the characters consistent and give them personalities that help the humour. Make the events feel connected and logical rather than random.
-
-// The story must be a final polished result only. Do not include a title, preface, commentary, explanation, bullet points, or any extra text.
-
-USER'S STORY IDEA:
-${prompt}
-
-Turn this idea into a 200 word funny, coherent story. Keep the premise recognisable, escalate the comedy naturally, and end with a memorable punchline. Return only the finished story.`;
-
-    const text = await generateGeminiText(detailedPrompt, {
-      systemInstruction: "You are a witty Singaporean comedian and professional short-story writer. Keep the story funny, coherent, and grounded in the user's original premise. Use natural Singaporean flavour where it fits, but never dilute or replace the user's idea with unrelated settings. Return only the finished story, with no title, commentary, explanation, or extra text.",
+    const text = await generateGeminiText(storyPrompt, {
+      systemInstruction: "Make the story funny and keep it to 100 words or fewer. Return only the story.",
       temperature: 1,
       thinkingConfig: { thinkingLevel: "low" },
       maxOutputTokens: 5_000
