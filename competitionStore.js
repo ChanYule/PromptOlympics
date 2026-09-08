@@ -107,9 +107,6 @@ export function setCompetitionState(store, state) {
 
 export function createSubmission(store, { participantName, prompt, resultText }) {
   const round = getCurrentRound(store);
-  if (round.state !== 'OPEN') {
-    throw new Error('Submissions are currently closed.');
-  }
 
   const cleanedName = sanitizeText(participantName, '');
   const cleanedPrompt = sanitizeText(prompt, '');
@@ -140,9 +137,6 @@ export function createSubmission(store, { participantName, prompt, resultText })
 
 export function createVote(store, { submissionId, voterSession, ratings, participantName }) {
   const round = getCurrentRound(store);
-  if (round.state !== 'OPEN') {
-    throw new Error('Voting is not open.');
-  }
 
   const cleanedSession = sanitizeText(voterSession, '');
   if (!cleanedSession) {

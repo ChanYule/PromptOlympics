@@ -16,7 +16,6 @@ import {
   readCompetitionStore,
   resetCompetition,
   resetVotes,
-  setCompetitionState,
   startNewRound
 } from "./competitionStore.js";
 
@@ -136,9 +135,6 @@ app.post("/api/submissions", (req, res) => {
     }
 
     const round = getCurrentRound(store);
-    if (round.state !== "SUBMISSIONS_OPEN") {
-      return res.status(409).json({ error: "Submissions are currently closed." });
-    }
 
     const submission = createSubmission(store, { participantName, prompt, resultText });
     if (title) submission.title = title;
@@ -246,42 +242,6 @@ app.get("/api/admin/competition", requireAdmin, (req, res) => {
   const store = readCompetitionStore();
   const round = getCurrentRound(store);
   res.json({ ok: true, adminPasswordConfigured: Boolean(adminPassword), competition: { ...store, currentRound: serializeRound(round) } });
-});
-
-app.post("/api/admin/state", requireAdmin, (req, res) => {
-  const nextState = typeof req.body?.state === "string" ? req.body.state : "WAITING";
-  const store = readCompetitionStore();
-  const round = setCompetitionState(store, nextState);
-  persistCompetitionStore(store);
-  res.json({ ok: true, state: round.state, currentRound: serializeRound(round) });
-});
-
-app.post("/api/admin/start-voting", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  setCompetitionState(store, "OPEN");
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
-});
-
-app.post("/api/admin/end-voting", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  setCompetitionState(store, "OPEN");
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
-});
-
-app.post("/api/admin/start-submissions", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  setCompetitionState(store, "OPEN");
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
-});
-
-app.post("/api/admin/close-submissions", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  setCompetitionState(store, "OPEN");
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(getCurrentRound(store)) });
 });
 
 app.post("/api/admin/reset-votes", requireAdmin, (req, res) => {
