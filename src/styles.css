@@ -300,3 +300,26 @@ fieldset.rating-area { min-width: 0; padding: 0; border: 0; }
   .feedback .row > button, .next-actions > button { width: 100%; }
   .mini-story > div { gap: 12px; }
 }
+
+.voting-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; }
+.voting-progress > div { flex: 1; min-width: 180px; }
+.voting-progress span { display: block; color: var(--muted); font-size: 13px; }
+.voting-progress progress { width: 150px; height: 10px; accent-color: var(--lime); }
+.entry-prompt { margin-top: 20px; padding: 16px; background: #101817; border-radius: 10px; }
+.entry-prompt summary, .ai-score summary { cursor: pointer; color: var(--teal); padding: 6px 0; }
+.entry-prompt p { margin-top: 10px; font-size: 14px; }
+.ai-score .chips { margin-top: 12px; }
+.star-choice { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 8px; color: var(--muted); background: #28352f; cursor: pointer; }
+.star-choice input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.star-choice span { font-size: 24px; pointer-events: none; }
+.star-choice.selected { background: var(--gold); color: #15201b; }
+.star-choice:focus-within { outline: 3px solid var(--lime); outline-offset: 3px; }
+.star-choice:hover { box-shadow: inset 0 0 0 1px var(--gold); }
+fieldset:disabled .star-choice { cursor: default; opacity: .7; }
+.clear-rating { padding: 0 8px; color: var(--muted); background: transparent; font-size: 12px; text-decoration: underline; }
+.star-row { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .star-choice { flex: 1; max-width: 56px; }
+  .voting-progress progress { flex: 1; }
+  .voting-progress > button { width: 100%; }
+}

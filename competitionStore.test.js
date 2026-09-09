@@ -226,3 +226,36 @@ test('startNewRound creates a new round without losing history', () => {
   assert.equal(store.rounds.length, 2);
   assert.equal(getCurrentRound(store).submissions.length, 0);
 });
+
+test('rejects invalid overall ratings without recording a vote', () => {
+  for (const overall of [undefined, null, 0, -1, 6, 2.5, NaN, Infinity, '5', true]) {
+    const store = createCompetition();
+    const entry = createSubmission(store, { participantName: 'Alice', prompt: 'A', resultText: 'A' });
+    assert.throws(() => createVote(store, { submissionId: entry.id, voterSession: 'visitor', ratings: { overall } }), /ratings/i);
+    assert.equal(getCurrentRound(store).votes.length, 0);
+  }
+});
+
+test('keeps skipped optional ratings unrated and rejects malformed optional ratings', () => {
+  const store = createCompetition();
+  const entry = createSubmission(store, { participantName: 'Alice', prompt: 'A', resultText: 'A' });
+  const vote = createVote(store, { submissionId: entry.id, voterSession: 'visitor', ratings: { overall: 4, funniest: 0 } });
+  assert.deepEqual(vote.ratings, { overall: 4, funniest: 0, mostCreative: 0, bestPrompt: 0 });
+  assert.throws(() => createVote(store, { submissionId: entry.id, voterSession: 'another', ratings: { overall: 4, bestPrompt: 8 } }), /ratings/i);
+  assert.equal(getCurrentRound(store).votes.length, 1);
+});
+
+test('ties self-vote prevention to the submitting session even after a name change', () => {
+  const store = createCompetition();
+  const entry = createSubmission(store, { participantName: 'Alice', participantSession: 'browser-a', prompt: 'A', resultText: 'A' });
+  assert.throws(() => createVote(store, { submissionId: entry.id, voterSession: 'BROWSER-A', participantName: 'Different name', ratings: { overall: 5 } }), /own submission/i);
+  assert.equal(getCurrentRound(store).votes.length, 0);
+});
+
+test('different browser sessions can vote independently but changing a name cannot bypass duplicates', () => {
+  const store = createCompetition();
+  const entry = createSubmission(store, { participantName: 'Alice', prompt: 'A', resultText: 'A' });
+  for (const voterSession of ['browser-a', 'browser-b']) createVote(store, { submissionId: entry.id, voterSession, ratings: { overall: 4 } });
+  assert.throws(() => createVote(store, { submissionId: entry.id, voterSession: ' BROWSER-A ', participantName: 'New name', ratings: { overall: 5 } }), /duplicate/i);
+  assert.equal(getCurrentRound(store).votes.length, 2);
+});

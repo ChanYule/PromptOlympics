@@ -136,7 +136,7 @@ app.post("/api/submissions", (req, res) => {
 
     const round = getCurrentRound(store);
 
-    const submission = createSubmission(store, { participantName, prompt, resultText, theme });
+    const submission = createSubmission(store, { participantName, prompt, resultText, theme, participantSession: req.body?.participantSession });
     if (title) submission.title = title;
     if (theme) submission.theme = theme;
     persistCompetitionStore(store);

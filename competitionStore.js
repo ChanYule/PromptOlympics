@@ -24,10 +24,12 @@ function normalizeState(value) {
   return 'OPEN';
 }
 
-function clampRating(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return 0;
-  return Math.min(5, Math.max(1, Math.round(number)));
+function validateRating(value, required = false) {
+  if (!required && (value === undefined || value === null || value === 0)) return 0;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 5) {
+    throw new Error('Ratings must be whole numbers between 1 and 5. Overall is required.');
+  }
+  return value;
 }
 
 function sanitizeText(value, fallback = '') {
@@ -132,7 +134,7 @@ export function setCompetitionState(store, state) {
   return round;
 }
 
-export function createSubmission(store, { participantName, prompt, resultText, theme }) {
+export function createSubmission(store, { participantName, prompt, resultText, theme, participantSession }) {
   const round = getCurrentRound(store);
 
   const cleanedName = sanitizeText(participantName, '');
@@ -149,6 +151,7 @@ export function createSubmission(store, { participantName, prompt, resultText, t
   const submission = {
     id: makeId('submission'),
     participantName: cleanedName,
+    participantSession: sanitizeText(participantSession),
     prompt: cleanedPrompt,
     resultText: cleanedResult,
     aiScore: scoreSubmission(cleanedPrompt, cleanedResult, theme),
@@ -178,7 +181,8 @@ export function createVote(store, { submissionId, voterSession, ratings, partici
 
   const normalizedParticipant = sanitizeText(participantName, '') || cleanedSession;
   const selfVoteName = submission.participantName.toLowerCase();
-  if (normalizedParticipant.toLowerCase() === selfVoteName) {
+  if (normalizedParticipant.toLowerCase() === selfVoteName ||
+      (submission.participantSession && submission.participantSession.toLowerCase() === cleanedSession.toLowerCase())) {
     throw new Error('You may not vote for your own submission.');
   }
 
@@ -190,10 +194,10 @@ export function createVote(store, { submissionId, voterSession, ratings, partici
   }
 
   const nextRatings = {
-    funniest: clampRating(ratings?.funniest ?? 0),
-    mostCreative: clampRating(ratings?.mostCreative ?? 0),
-    bestPrompt: clampRating(ratings?.bestPrompt ?? 0),
-    overall: clampRating(ratings?.overall ?? ratings?.overallScore ?? 0)
+    funniest: validateRating(ratings?.funniest),
+    mostCreative: validateRating(ratings?.mostCreative),
+    bestPrompt: validateRating(ratings?.bestPrompt),
+    overall: validateRating(ratings?.overall ?? ratings?.overallScore, true)
   };
 
   if (!nextRatings.overall || nextRatings.overall < 1 || nextRatings.overall > 5) {

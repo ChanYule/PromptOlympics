@@ -22,6 +22,7 @@ type CompetitionState = "OPEN" | "WAITING" | "SUBMISSIONS_OPEN" | "SUBMISSIONS_C
 type AiScore = { funny: number; creativity: number; relevance: number; overall: number };
 
 type SubmissionRecord = {
+  participantSession?: string;
   id: string;
   participantName: string;
   prompt: string;
@@ -262,6 +263,18 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+function storedVoterId() {
+  try {
+    const saved = localStorage.getItem("po-voter-id");
+    if (saved) return saved;
+    const id = globalThis.crypto?.randomUUID?.() ?? uid();
+    localStorage.setItem("po-voter-id", id);
+    return id;
+  } catch {
+    return uid();
+  }
+}
+
 function App() {
   const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard"|"voting">("home");
   const [step,setStep]=useState<"nickname"|"prompt"|"generate"|"story">("nickname");
@@ -282,8 +295,9 @@ function App() {
   const [submissionStatus, setSubmissionStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [submissionError, setSubmissionError] = useState("");
   const [competition,setCompetition]=useState<CompetitionResponse | null>(null);
-  const [voteSessionId,setVoteSessionId]=useState("Voter 1");
-  const [voteName,setVoteName]=useState("Voter 1");
+  const [voteSessionId]=useState(storedVoterId);
+  const [voteName,setVoteName]=useState("");
+  const voteDrafts = useRef<Record<string, typeof defaultRatings>>({});
   const [voteRatings,setVoteRatings]=useState(defaultRatings);
   const [voteError,setVoteError]=useState("");
   const [voteSuccess,setVoteSuccess]=useState("");
@@ -319,8 +333,9 @@ function App() {
     vote.submissionId === selectedSubmissionId && vote.voterSession.toLowerCase() === voteSessionId.toLowerCase());
 
   function openEntry(submissionId: string) {
+    if (selectedSubmissionId && !existingVote) voteDrafts.current[selectedSubmissionId] = voteRatings;
     setSelectedSubmissionId(submissionId);
-    setVoteRatings(defaultRatings);
+    setVoteRatings(voteDrafts.current[submissionId] ?? defaultRatings);
     setVoteError("");
     setVoteSuccess("");
     setPage("voting");
@@ -380,7 +395,7 @@ function App() {
         const saved = await fetchJson<{ ok: boolean; submission: SubmissionRecord; round: CompetitionRound }>("/api/submissions", {
           method: "POST",
           body: JSON.stringify({ participantName: submissionStory.author, prompt: submissionStory.prompt,
-            resultText: submissionStory.text, title, theme: theme.title })
+            resultText: submissionStory.text, title, theme: theme.title, participantSession: voteSessionId })
         });
         if (!saved.ok || !saved.submission || !saved.round) throw new Error("The server did not confirm your entry.");
         const confirmedStory = { ...submissionStory, id: saved.submission.id };
@@ -403,7 +418,7 @@ function App() {
   }
 
   const shellClass=`app ${largeText?"large-text":""} ${highContrast?"contrast":""} ${reduced?"reduced":""}`;
-  const nav=(p:typeof page)=>{setPage(p); if(p==="play")startPlay();};
+  const nav=(p:typeof page)=>{if (isSubmittingVote) return; setPage(p); if(p==="play")startPlay();};
 
   async function handleVoteSubmit() {
     if (isSubmittingVote || existingVote) return;
@@ -415,7 +430,7 @@ function App() {
       setVoteError("Please choose a 1–5 Overall rating before submitting.");
       return;
     }
-    if (voteName.trim() && currentCandidate.participantName.toLowerCase() === voteName.trim().toLowerCase()) {
+    if (isOwnEntry(currentCandidate)) {
       setVoteError("You cannot vote for your own submission.");
       return;
     }
@@ -439,6 +454,8 @@ function App() {
           }
         })
       });
+      if (!result.ok || !result.round) throw new Error("Your vote was not confirmed. Please refresh the competition before trying again.");
+      delete voteDrafts.current[currentCandidate.id];
       // Use the round returned by the vote itself so the leaderboard updates instantly, without a second fetch.
       if (result.round) {
         setCompetition((prev) => prev ? { ...prev, competition: { ...prev.competition, currentRound: result.round } } : prev);
@@ -454,14 +471,20 @@ function App() {
 
   const leaderboard = currentRound?.leaderboard ?? [];
   const listState = { loading: competitionLoading, error: competitionError, onRetry: loadCompetition, onCreate: startPlay };
-  const nextEntry = currentRound?.submissions.find(entry => entry.id !== selectedSubmissionId &&
-    !votedIds.has(entry.id) && entry.participantName.toLowerCase() !== voteName.trim().toLowerCase());
+  function isOwnEntry(entry: SubmissionRecord) {
+    return entry.participantSession === voteSessionId ||
+      (!!voteName.trim() && entry.participantName.toLowerCase() === voteName.trim().toLowerCase());
+  }
+  const eligibleEntries = (currentRound?.submissions ?? []).filter(entry => !isOwnEntry(entry));
+  const remainingEntries = eligibleEntries.filter(entry => !votedIds.has(entry.id));
+  const nextEntry = remainingEntries.find(entry => entry.id !== selectedSubmissionId);
+  const ownEntry = currentCandidate ? isOwnEntry(currentCandidate) : false;
 
   return <div className={shellClass}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <header className="topbar">
       <button className="brand" onClick={()=>nav("home")}><span className="brand-mark">✨</span><span>Prompt <b>Olympics</b></span></button>
-      <nav aria-label="Main navigation">{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button aria-current={page===p?"page":undefined} className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{p==="home"?"Home":p === "voting" ? "Voting" : p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
+      <nav aria-label="Main navigation">{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button disabled={isSubmittingVote} aria-current={page===p?"page":undefined} className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{p==="home"?"Home":p === "voting" ? "Voting" : p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
       <a className="tiny admin-link" href="/admin">⚙️ Admin</a>
     </header>
 
@@ -516,22 +539,28 @@ function App() {
             <span>⭐ VOTING MODE</span>
             <h1>{selectedSubmissionId ? "Rate this entry." : "Rate the entries."}</h1>
           </div>
-          {selectedSubmissionId && <button className="secondary" onClick={() => { setSelectedSubmissionId(null); setPage("gallery"); }}>← Back to gallery</button>}
+          {selectedSubmissionId && <button disabled={isSubmittingVote} className="secondary" onClick={() => { setSelectedSubmissionId(null); setPage("gallery"); }}>← Back to gallery</button>}
         </div>
 
+        {!competitionLoading && !competitionError && <div className="voting-progress">
+          <div><strong>{eligibleEntries.length - remainingEntries.length} of {eligibleEntries.length} entries rated</strong><span>{remainingEntries.length ? `${remainingEntries.length} left to explore` : "You’re all caught up!"}</span></div>
+          <progress aria-label="Your voting progress" value={eligibleEntries.length - remainingEntries.length} max={Math.max(1, eligibleEntries.length)}/>
+          <button className="secondary" onClick={loadCompetition} disabled={isSubmittingVote}>Refresh entries</button>
+        </div>}
         {competitionLoading || competitionError ? <DataFeedback loading={competitionLoading} error={competitionError} onRetry={loadCompetition} /> : !currentCandidate ? (
           <section className="card centered voting-empty">
             <div className="bigicon">🗳️</div>
             <h2>Pick an entry to vote on.</h2>
             <p className="sub">Open any result from the gallery and rate it from there — no need to go through every entry.</p>
-            <button className="primary full" onClick={() => setPage("gallery")}>📖 Browse gallery</button>
+            {nextEntry && <button className="primary full" onClick={()=>openEntry(nextEntry.id)}>Start rating →</button>}
+            <button className="secondary full" onClick={() => setPage("gallery")}>📖 Browse gallery</button>
           </section>
         ) : (
           <section className="card voting-card">
             <div className="vote-header">
               <div>
                 <small>Current voter</small>
-                <h3>{voteSessionId}</h3>
+                <h3>{voteName.trim() || "You"}</h3>
               </div>
               <div>
                 <small>Entry theme</small>
@@ -540,8 +569,9 @@ function App() {
             </div>
 
             <div className="voter-box">
-              <label htmlFor="voter-name">Current voter name / identifier</label>
-              <input disabled={isSubmittingVote} id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} placeholder="Voter 1" />
+              <label htmlFor="voter-name">Your name (optional)</label>
+              <input disabled={isSubmittingVote} id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} maxLength={40} placeholder="Enter your participant name" />
+              <p className="rating-hint">Votes are linked to this browser. Changing your name does not give you another vote.</p>
             </div>
 
             <div className="submission-panel">
@@ -549,23 +579,25 @@ function App() {
                 <span>Prompt Olympics Result</span>
                 <strong>{currentCandidate.participantName}</strong>
               </div>
+              <details className="entry-prompt" open><summary>Original prompt</summary><p>{currentCandidate.prompt}</p></details>
               <h2>{currentCandidate.title ?? "Prompt Olympics Result"}</h2>
               <p>{currentCandidate.resultText}</p>
               {currentCandidate.aiScore && (
-                <div className="ai-score">
-                  <span>🤖 AI scores · out of 10 · judged before voting</span>
+                <details className="ai-score">
+                  <summary>View AI scores · out of 10</summary>
                   <div className="chips">
                     <span>😂 Funny {currentCandidate.aiScore.funny.toFixed(1)}</span>
                     <span>💡 Creativity {currentCandidate.aiScore.creativity.toFixed(1)}</span>
                     <span>🎯 Relevance {currentCandidate.aiScore.relevance.toFixed(1)}</span>
                     <span>⭐ Overall {currentCandidate.aiScore.overall.toFixed(1)}</span>
                   </div>
-                </div>
+                </details>
               )}
             </div>
 
+            {ownEntry && <p className="feedback">This is your entry. You can read it, but you cannot vote for it.</p>}
             {existingVote && <div className="feedback success" role="status"><strong>Already voted · {existingVote.overall} of 5 overall</strong><p>Your rating is recorded for this voter session.</p></div>}
-            <fieldset className="rating-area" disabled={isSubmittingVote || !!existingVote}><legend className="sr-only">Entry ratings</legend><p className="rating-hint">Rate from 1 to 5 stars. Overall is required; other ratings are optional.</p>
+            <fieldset className="rating-area" disabled={isSubmittingVote || !!existingVote || ownEntry}><legend className="sr-only">Entry ratings</legend><p className="rating-hint">Rate from 1 to 5 stars. Overall is required; other ratings are optional.</p>
               {[
                 ["😂 Funniest", "funniest"],
                 ["💡 Most Creative", "mostCreative"],
@@ -579,18 +611,12 @@ function App() {
                 <div className="rating-row" key={key}>
                   <div className="rating-label">{label}<small>{rating ? `${rating} of 5` : "Not rated"}</small></div>
                   <div className="star-row" role="group" aria-label={`${label} rating`}>
-                    {[1,2,3,4,5].map((value) => (
-                      <button
-                        key={`${key}-${value}`}
-                        className={`star-button ${rating >= value ? "selected" : ""}`}
-                        onClick={() => setVoteRatings((prev) => ({ ...prev, [key]: value }))}
-                        type="button"
-                        aria-label={`${label} ${value} stars`}
-                        aria-pressed={rating === value}
-                      >
-                        {value <= rating ? "★" : "☆"}
-                      </button>
-                    ))}
+                    {[1,2,3,4,5].map(value => <label className={`star-choice ${rating >= value ? "selected" : ""}`} key={value}>
+                      <input type="radio" name={`rating-${key}`} value={value} checked={rating === value}
+                        aria-label={`${label}: ${value} of 5`} onChange={()=>setVoteRatings(prev=>({...prev, [key]:value}))}/>
+                      <span aria-hidden="true">{rating >= value ? "★" : "☆"}</span>
+                    </label>)}
+                    {key !== "overall" && rating > 0 && !existingVote && <button className="clear-rating" type="button" aria-label={`Clear ${label} rating`} onClick={()=>setVoteRatings(prev=>({...prev,[key]:0}))}>Clear</button>}
                   </div>
                 </div>
                 );
@@ -601,14 +627,14 @@ function App() {
             {voteSuccess && <p className="vote-success" role="status">✅ {voteSuccess}</p>}
 
             <div className="row voting-actions">
-              <button className="secondary" disabled={isSubmittingVote || !!existingVote} onClick={() => { setVoteError(""); setVoteRatings(defaultRatings); }} type="button">Reset</button>
-              <button className="primary" disabled={isSubmittingVote || !!existingVote || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : existingVote ? "Vote recorded" : "Submit vote"}</button>
+              <button className="secondary" disabled={isSubmittingVote || !!existingVote || ownEntry} onClick={() => { setVoteError(""); setVoteRatings(defaultRatings); }} type="button">Reset</button>
+              <button className="primary" disabled={isSubmittingVote || !!existingVote || ownEntry || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : existingVote ? "Vote recorded" : "Submit vote"}</button>
             </div>
-            {(voteSuccess || existingVote) && <div className="row next-actions">
-              {nextEntry && <button className="primary" onClick={()=>openEntry(nextEntry.id)}>Rate another entry →</button>}
-              <button className="secondary" onClick={()=>setPage("gallery")}>Browse gallery</button>
-              <button className="secondary" onClick={()=>setPage("leaderboard")}>View leaderboard</button>
-            </div>}
+            <div className="row next-actions">
+              {nextEntry && <button className="primary" disabled={isSubmittingVote} onClick={()=>openEntry(nextEntry.id)}>{existingVote || ownEntry ? "Rate another entry →" : "Skip for now →"}</button>}
+              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("gallery")}>Browse gallery</button>
+              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("leaderboard")}>View leaderboard</button>
+            </div>
           </section>
         )}
       </main>
