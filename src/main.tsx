@@ -58,6 +58,7 @@ type LeaderboardEntry = {
   averageScore: number;
   voteCount: number;
   finalScore: number;
+  scoreMax: number;
   createdAt: number;
 };
 
@@ -720,11 +721,12 @@ function EmptyEntries({onCreate}: {onCreate: () => void}) {
 }
 function ScoreGuide() {
   return <details className="score-guide"><summary>How are scores calculated?</summary>
-    <p>AI scores are out of 10. Community ratings average the overall votes, out of 5. With votes, the final score combines 50% AI and 50% community, with community ratings converted from 1–5 to 0–10. Until an entry has votes, its final score is its AI score.</p></details>;
+    <p>Before voting, entries are ordered by their AI score out of 10. After an entry receives public votes, its combined score is the AI score out of 10 plus the public average out of 5, for a maximum of 15.</p></details>;
 }
 function EntryScores({entry}: {entry: LeaderboardEntry}) {
-  return <span className="entry-scores"><span>AI score {entry.aiScore.overall.toFixed(1)} / 10</span>
-    <span>Community {entry.voteCount ? `${entry.averageScore.toFixed(1)} / 5` : "not rated"} · {entry.voteCount} {entry.voteCount === 1 ? "vote" : "votes"}</span></span>;
+  return <span className="entry-scores"><span>AI {entry.aiScore.overall.toFixed(1)} / 10</span>
+    <span>Public {entry.voteCount ? `${entry.averageScore.toFixed(1)} / 5` : "not rated"} · {entry.voteCount} {entry.voteCount === 1 ? "vote" : "votes"}</span>
+    <span className="score-equation">Combined {entry.finalScore.toFixed(1)} / {entry.scoreMax}</span></span>;
 }
 function Gallery({entries,onOpen,votedIds,loading,error,onRetry,onCreate}: ListStateProps & {entries:LeaderboardEntry[]; onOpen:(id:string)=>void; votedIds:Set<string>}) {
   const [sort,setSort]=useState("top");
@@ -735,7 +737,7 @@ function Gallery({entries,onOpen,votedIds,loading,error,onRetry,onCreate}: ListS
     <DataFeedback loading={loading} error={error} onRetry={onRetry}/>
     {!loading && !error && (!sorted.length ? <EmptyEntries onCreate={onCreate}/> : <>
       <ScoreGuide/><div className="story-grid">{sorted.map(entry=><button className="mini-story" key={entry.submissionId} onClick={()=>onOpen(entry.submissionId)} type="button">
-        <div><span>✨ {entry.theme || defaultTheme.title}</span><span className="final-score"><small>Final score</small><b>{entry.finalScore.toFixed(1)} / 10</b></span></div>
+        <div><span>✨ {entry.theme || defaultTheme.title}</span><span className="final-score"><small>{entry.voteCount ? "Combined score" : "AI score"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span></div>
         <h3>{entry.title || "Prompt Olympics Result"}</h3><p>{entry.resultText}</p><small>by {entry.participantName}</small>
         <EntryScores entry={entry}/><span className="entry-action">{votedIds.has(entry.submissionId) ? "✓ Already voted · Read entry" : "Read and vote →"}</span>
       </button>)}</div></>)}
@@ -746,7 +748,7 @@ function Leaderboard({entries,loading,error,onRetry,onCreate}: ListStateProps & 
     <DataFeedback loading={loading} error={error} onRetry={onRetry}/>
     {!loading && !error && (!entries.length ? <EmptyEntries onCreate={onCreate}/> : <><ScoreGuide/><div className="leader">{entries.map((entry,i)=><div className="leader-row" key={entry.submissionId}>
       <strong aria-label={`Rank ${i+1}`}>{["🥇","🥈","🥉"][i] ?? `#${i+1}`}</strong>
-      <span>{entry.participantName}<EntryScores entry={entry}/></span><span className="final-score"><small>Final score</small><b>{entry.finalScore.toFixed(1)} / 10</b></span>
+      <span>{entry.participantName}<EntryScores entry={entry}/></span><span className="final-score"><small>{entry.voteCount ? "Combined score" : "AI score"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span>
     </div>)}</div></>)}
   </main>;
 }

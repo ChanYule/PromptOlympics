@@ -282,11 +282,8 @@ export function buildLeaderboard(round) {
         ? Number((votes.reduce((sum, vote) => sum + Number(vote.overall ?? vote.ratings?.overall ?? 0), 0) / votes.length).toFixed(2))
         : 0;
       const aiScore = submission.aiScore ?? scoreSubmission(submission.prompt, submission.resultText, submission.theme);
-      // Votes are collected on a 1-5 scale; rescale to 0-10 so they blend evenly with the AI score.
-      const humanScore = votes.length ? Number((((averageScore - 1) / 4) * 10).toFixed(2)) : 0;
-      const finalScore = votes.length
-        ? Number((aiScore.overall * 0.5 + humanScore * 0.5).toFixed(2))
-        : aiScore.overall;
+      // The public score is added directly to the AI score: 10 points from AI plus 5 from voters.
+      const finalScore = Number((aiScore.overall + averageScore).toFixed(2));
 
       return {
         submissionId: submission.id,
@@ -299,6 +296,7 @@ export function buildLeaderboard(round) {
         averageScore,
         voteCount: votes.length,
         finalScore,
+        scoreMax: votes.length ? 15 : 10,
         createdAt: submission.createdAt
       };
     })

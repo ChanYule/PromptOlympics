@@ -61,7 +61,7 @@ test('scores a submission on funny, creativity and relevance as soon as it is cr
   assert.equal(leaderboard[0].finalScore, submission.aiScore.overall);
 });
 
-test('blends the AI score and human votes into a final score once votes exist', () => {
+test('adds the public rating to the AI score once votes exist', () => {
   const store = createCompetition();
   const submission = createSubmission(store, {
     participantName: 'Alice',
@@ -72,9 +72,9 @@ test('blends the AI score and human votes into a final score once votes exist', 
 
   const leaderboard = buildLeaderboard(getCurrentRound(store));
   const entry = leaderboard[0];
-  const expectedHuman = ((entry.averageScore - 1) / 4) * 10;
-  const expectedFinal = Number((entry.aiScore.overall * 0.5 + expectedHuman * 0.5).toFixed(2));
+  const expectedFinal = Number((entry.aiScore.overall + entry.averageScore).toFixed(2));
   assert.equal(entry.finalScore, expectedFinal);
+  assert.equal(entry.scoreMax, 15);
 });
 
 test('keeps submissions and voting open at the same time', () => {
