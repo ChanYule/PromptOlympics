@@ -568,11 +568,12 @@ function App() {
               </div>
             </div>
 
-            <div className="voter-box">
-              <label htmlFor="voter-name">Your name (optional)</label>
+            <details className="voter-box">
+              <summary>Your name (optional)</summary>
+              <label htmlFor="voter-name">Participant name</label>
               <input disabled={isSubmittingVote} id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} maxLength={40} placeholder="Enter your participant name" />
-              <p className="rating-hint">Votes are linked to this browser. Changing your name does not give you another vote.</p>
-            </div>
+              <p className="rating-hint">Your vote is linked to this browser, so a name change cannot create another vote.</p>
+            </details>
 
             <div className="submission-panel">
               <div className="submission-meta">
@@ -597,13 +598,8 @@ function App() {
 
             {ownEntry && <p className="feedback">This is your entry. You can read it, but you cannot vote for it.</p>}
             {existingVote && <div className="feedback success" role="status"><strong>Already voted · {existingVote.overall} of 5 overall</strong><p>Your rating is recorded for this voter session.</p></div>}
-            <fieldset className="rating-area" disabled={isSubmittingVote || !!existingVote || ownEntry}><legend className="sr-only">Entry ratings</legend><p className="rating-hint">Rate from 1 to 5 stars. Overall is required; other ratings are optional.</p>
-              {[
-                ["😂 Funniest", "funniest"],
-                ["💡 Most Creative", "mostCreative"],
-                ["✨ Best Prompt", "bestPrompt"],
-                ["⭐ Overall", "overall"]
-              ].map(([label, key]) => {
+            <fieldset className="rating-area" disabled={isSubmittingVote || !!existingVote || ownEntry}><legend className="sr-only">Entry ratings</legend><p className="rating-hint">How was it? Choose one Overall rating to submit.</p>
+              {[ ["⭐ Overall", "overall"] ].map(([label, key]) => {
                 const rating = existingVote
                   ? existingVote.ratings?.[key as keyof typeof defaultRatings] ?? (key === "overall" ? existingVote.overall : 0)
                   : voteRatings[key as keyof typeof voteRatings];
@@ -621,6 +617,25 @@ function App() {
                 </div>
                 );
               })}
+              <details className="optional-ratings">
+                <summary>Rate more (optional)</summary>
+                {[ ["😂 Funniest", "funniest"], ["💡 Most Creative", "mostCreative"], ["✨ Best Prompt", "bestPrompt"] ].map(([label, key]) => {
+                  const rating = existingVote?.ratings?.[key as keyof typeof defaultRatings] ?? voteRatings[key as keyof typeof voteRatings];
+                  return (
+                  <div className="rating-row" key={key}>
+                    <div className="rating-label">{label}<small>{rating ? `${rating} of 5` : "Not rated"}</small></div>
+                    <div className="star-row" role="group" aria-label={`${label} rating`}>
+                      {[1,2,3,4,5].map(value => <label className={`star-choice ${rating >= value ? "selected" : ""}`} key={value}>
+                        <input type="radio" name={`rating-${key}`} value={value} checked={rating === value}
+                          aria-label={`${label}: ${value} of 5`} onChange={()=>setVoteRatings(prev=>({...prev, [key]:value}))}/>
+                        <span aria-hidden="true">{rating >= value ? "★" : "☆"}</span>
+                      </label>)}
+                      {rating > 0 && !existingVote && <button className="clear-rating" type="button" aria-label={`Clear ${label} rating`} onClick={()=>setVoteRatings(prev=>({...prev,[key]:0}))}>Clear</button>}
+                    </div>
+                  </div>
+                  );
+                })}
+              </details>
             </fieldset>
 
             {voteError && <p className="generation-error" role="alert">⚠️ {voteError}</p>}
@@ -628,7 +643,7 @@ function App() {
 
             <div className="row voting-actions">
               <button className="secondary" disabled={isSubmittingVote || !!existingVote || ownEntry} onClick={() => { setVoteError(""); setVoteRatings(defaultRatings); }} type="button">Reset</button>
-              <button className="primary" disabled={isSubmittingVote || !!existingVote || ownEntry || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : existingVote ? "Vote recorded" : "Submit vote"}</button>
+              <button className="primary" disabled={isSubmittingVote || !!existingVote || ownEntry || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : existingVote ? "Vote recorded" : "Submit my vote"}</button>
             </div>
             <div className="row next-actions">
               {nextEntry && <button className="primary" disabled={isSubmittingVote} onClick={()=>openEntry(nextEntry.id)}>{existingVote || ownEntry ? "Rate another entry →" : "Skip for now →"}</button>}
