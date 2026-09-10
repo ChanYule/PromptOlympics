@@ -136,6 +136,8 @@ button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 .voter-box { margin: 22px 0; }
 .voter-box label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .voter-box input { width: 100%; min-height: 48px; padding: 0 14px; border-radius: 9px; }
+.new-voter-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 12px 0 22px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+.new-voter-row .secondary { min-height: 40px; padding: 0 13px; font-size: 12px; }
 .submission-panel { padding: 25px; border: 1px solid rgba(121,215,189,.22); border-radius: 14px; background: rgba(121,215,189,.07); }
 .submission-meta strong { color: var(--teal); }
 .submission-panel h2 { margin: 18px 0 8px; font-size: 25px; }
@@ -255,6 +257,8 @@ h1, h2, h3, p, .leader-row span, .submission-meta strong { overflow-wrap: anywhe
   .hero-actions { max-width: 420px; margin-inline: auto; }
   .page-title > button { margin-top: 20px; }
   .submission-panel { padding: 18px; }
+  .new-voter-row { align-items: flex-start; flex-direction: column; }
+  .new-voter-row .secondary { width: 100%; }
   .story-meta { align-items: flex-start; }
   .card { padding: 24px 20px; }
   .admin-table { padding: 20px; }

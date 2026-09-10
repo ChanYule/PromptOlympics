@@ -264,15 +264,19 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+function createVoterId() {
+  return globalThis.crypto?.randomUUID?.() ?? uid();
+}
+
 function storedVoterId() {
   try {
     const saved = localStorage.getItem("po-voter-id");
     if (saved) return saved;
-    const id = globalThis.crypto?.randomUUID?.() ?? uid();
+    const id = createVoterId();
     localStorage.setItem("po-voter-id", id);
     return id;
   } catch {
-    return uid();
+    return createVoterId();
   }
 }
 
@@ -296,7 +300,7 @@ function App() {
   const [submissionStatus, setSubmissionStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [submissionError, setSubmissionError] = useState("");
   const [competition,setCompetition]=useState<CompetitionResponse | null>(null);
-  const [voteSessionId]=useState(storedVoterId);
+  const [voteSessionId,setVoteSessionId]=useState(storedVoterId);
   const [voteName,setVoteName]=useState("");
   const voteDrafts = useRef<Record<string, typeof defaultRatings>>({});
   const [voteRatings,setVoteRatings]=useState(defaultRatings);
@@ -340,6 +344,16 @@ function App() {
     setVoteError("");
     setVoteSuccess("");
     setPage("voting");
+  }
+  function startNewVoter() {
+    const nextVoterId = createVoterId();
+    try { localStorage.setItem("po-voter-id", nextVoterId); } catch {}
+    setVoteSessionId(nextVoterId);
+    setVoteName("");
+    setVoteRatings(defaultRatings);
+    voteDrafts.current = {};
+    setVoteError("");
+    setVoteSuccess("");
   }
   const activeStory=story ?? storyRef.current;
 
@@ -573,8 +587,12 @@ function App() {
               <summary>Your name (optional)</summary>
               <label htmlFor="voter-name">Participant name</label>
               <input disabled={isSubmittingVote} id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} maxLength={40} placeholder="Enter your participant name" />
-              <p className="rating-hint">Your vote is linked to this browser, so a name change cannot create another vote.</p>
+              <p className="rating-hint">Your votes are grouped under this voter session.</p>
             </details>
+            <div className="new-voter-row">
+              <span>Sharing this browser?</span>
+              <button className="secondary" type="button" disabled={isSubmittingVote} onClick={startNewVoter}>Start new voter</button>
+            </div>
 
             <div className="submission-panel">
               <div className="submission-meta">
