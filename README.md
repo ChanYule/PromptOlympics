@@ -43,4 +43,6 @@ The development Vite server does not run the server API. To test Gemini locally,
 
 ## Scoring
 
+The AI judge uses a more generous curve: it awards 40% of the remaining points up to 5 (for example, 2 becomes 3.2 and 3 becomes 3.8). Existing entries receive the same adjustment once, and human votes retain their original values.
+
 AI and human ratings are out of 5. Once voted, the combined score is 50% AI plus 50% average human rating, out of 5. Unvoted scores are provisional AI scores. Existing ten-point AI scores are automatically converted once. Run `node --test competitionStore.test.js geminiConfig.test.js` to check server behavior.

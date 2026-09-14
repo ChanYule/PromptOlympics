@@ -270,10 +270,10 @@ test('converts legacy scores once and preserves votes across reloads', () => {
   const reloaded = createCompetition(JSON.parse(JSON.stringify(migrated)));
   for (const round of [getCurrentRound(store), getCurrentRound(migrated), getCurrentRound(reloaded)]) {
     const score = buildLeaderboard(round)[0];
-    assert.equal(score.aiScore.overall, 3);
+    assert.equal(score.aiScore.overall, 3.8);
     assert.equal(score.aiScore.max, 5);
     assert.equal(score.averageScore, 5);
-    assert.equal(score.finalScore, 4);
+    assert.equal(score.finalScore, 4.4);
     assert.equal(score.scoreMax, 5);
   }
 });
@@ -286,4 +286,25 @@ test('additional voters cannot change the fifty-fifty weighting', () => {
     createVote(store, { submissionId: entry.id, voterSession: `reader-${i}`, ratings: { overall: 1 } });
     assert.equal(buildLeaderboard(getCurrentRound(store))[0].finalScore, 3);
   }
+});
+
+test('raises existing five-point scores once without changing public votes', () => {
+  const store = createCompetition();
+  const entry = createSubmission(store, { participantName: 'Test', prompt: 'A', resultText: 'B' });
+  entry.aiScore = { funny: 2, creativity: 3, relevance: 4, overall: 3, max: 5 };
+  createVote(store, { submissionId: entry.id, voterSession: 'reader', ratings: { overall: 2 } });
+  let reloaded = store;
+  for (let i = 0; i < 3; i++) {
+    reloaded = createCompetition(JSON.parse(JSON.stringify(reloaded)));
+    const result = buildLeaderboard(getCurrentRound(reloaded))[0];
+    assert.deepEqual(result.aiScore, { funny: 3.2, creativity: 3.8, relevance: 4.4, overall: 3.8, max: 5, gradingVersion: 2 });
+    assert.equal(result.averageScore, 2);
+    assert.equal(result.finalScore, 2.9);
+  }
+});
+
+test('gives short stories a kinder baseline without requiring explicit comedy keywords', () => {
+  const score = scoreSubmission('A cat gives a speech', 'The cat made a speech with a fish-shaped podium.', 'Creative Story');
+  assert.ok(score.overall >= 2.8 && score.overall < 4);
+  assert.equal(score.gradingVersion, 2);
 });

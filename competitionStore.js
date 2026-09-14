@@ -43,6 +43,24 @@ function clampScore(value) {
   return Number(Math.max(0, Math.min(10, value)).toFixed(1));
 }
 
+const GRADING_VERSION = 2;
+
+function lenientScore(score) {
+  // Award 40% of the remaining headroom while preserving score ordering.
+  return Number(Math.min(5, Math.max(0, score + (5 - score) * 0.4)).toFixed(2));
+}
+
+function applyGradingCurve(score) {
+  return {
+    funny: lenientScore(score.funny),
+    creativity: lenientScore(score.creativity),
+    relevance: lenientScore(score.relevance),
+    overall: lenientScore(score.overall),
+    max: 5,
+    gradingVersion: GRADING_VERSION
+  };
+}
+
 // Heuristic "AI judge": scores a submission on funny/creativity/relevance as soon as it is created,
 // before any human votes exist. Human votes are blended in later once they arrive.
 export function scoreSubmission(prompt, resultText, theme = '') {
@@ -60,17 +78,18 @@ export function scoreSubmission(prompt, resultText, theme = '') {
   const relevance = clampScore(2 + promptMatches * 1.1 + themeMatches * 0.8);
   const overall = clampScore((funny + creativity + relevance) / 3);
 
-  return { funny: funny / 2, creativity: creativity / 2, relevance: relevance / 2, overall: overall / 2, max: 5 };
+  return applyGradingCurve({ funny: funny / 2, creativity: creativity / 2, relevance: relevance / 2, overall: overall / 2 });
 }
 
 function fivePointAiScore(submission) {
   const score = submission.aiScore;
   if (!score) return scoreSubmission(submission.prompt, submission.resultText, submission.theme);
-  if (score.max === 5) return score;
+  if (score.max === 5 && score.gradingVersion === GRADING_VERSION) return score;
+  if (score.max === 5) return applyGradingCurve(score);
   // Scores saved before this change were out of ten. Mark converted values
   // so subsequent reads and saves cannot halve them a second time.
-  return { funny: score.funny / 2, creativity: score.creativity / 2,
-    relevance: score.relevance / 2, overall: score.overall / 2, max: 5 };
+  return applyGradingCurve({ funny: score.funny / 2, creativity: score.creativity / 2,
+    relevance: score.relevance / 2, overall: score.overall / 2 });
 }
 
 export function createRound(roundNumber = 1, title = 'Prompt Olympics') {
