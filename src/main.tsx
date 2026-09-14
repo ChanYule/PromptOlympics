@@ -499,49 +499,54 @@ function App() {
     <a className="skip-link" href="#main-content">Skip to content</a>
     <header className="topbar">
       <button className="brand" onClick={()=>nav("home")}><span className="brand-mark">✨</span><span>Prompt <b>Olympics</b></span></button>
-      <nav aria-label="Main navigation">{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button disabled={isSubmittingVote} aria-current={page===p?"page":undefined} className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{p==="home"?"Home":p === "voting" ? "Voting" : p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
+      <nav aria-label="Main navigation">{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button disabled={isSubmittingVote} aria-current={page===p?"page":undefined} className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{({home:"Home",play:"Create a story",gallery:"Read stories",leaderboard:"Scores",voting:"Vote"})[p]}</button>)}</nav>
       <a className="tiny admin-link" href="/admin">⚙️ Admin</a>
     </header>
+    <div className="reading-tools" role="group" aria-label="Reading preferences">
+      <span>Make yourself comfortable</span>
+      <button type="button" aria-pressed={largeText} onClick={()=>setLargeText(!largeText)}>Aa {largeText ? "Standard text" : "Larger text"}</button>
+      <button type="button" aria-pressed={reduced} onClick={()=>setReduced(!reduced)}>Less movement</button>
+    </div>
 
     {page === "home" && <main id="main-content" tabIndex={-1} className="home">
       <section className="hero">
-        <div className="eyebrow">🏁 LIVE COMPETITION</div>
-        <h1>Prompt <span>Olympics</span></h1>
-        <p className="hero-description">Turn a creative prompt into a funny story. Share your imagination and vote for your favorites.</p>
-        <p className="round-label">{currentRound ? `Round ${currentRound.roundNumber}: ${currentRound.title}` : "Round 1"}</p>
+        <div className="eyebrow">A story to share. A reason to smile.</div>
+        <h1>Your idea.<br/><span>A little laughter.</span></h1>
+        <p className="hero-description">Share a simple idea and let AI turn it into a funny story. Read what others have created, and vote for the stories you enjoy.</p>
+        <p className="welcome-note">No experience with AI needed. Just bring your imagination.</p><p className="round-label">{currentRound ? `Round ${currentRound.roundNumber}: ${currentRound.title}` : "Round 1"}</p>
         <div className="hero-actions">
-          <button className="primary" onClick={startPlay}>🚀 Join the challenge</button>
-          <button className="secondary" onClick={()=>setPage("gallery")}>⭐ Choose an entry to vote</button>
-          {competitionState === "RESULTS" && <button className="primary" onClick={()=>setPage("leaderboard")}>🏆 View leaderboard</button>}
+          <button className="primary" onClick={startPlay}>Create my story →</button>
+          <button className="secondary" onClick={()=>setPage("gallery")}>Read stories and vote</button>
+          {competitionState === "RESULTS" && <button className="primary" onClick={()=>setPage("leaderboard")}>View scores</button>}
           {competitionState === "WAITING" && <button className="secondary" onClick={()=>setPage("play")}>⏳ Waiting for round start</button>}
         </div>
       </section>
       {(competitionLoading || competitionError) && <div className="home-feedback"><DataFeedback loading={competitionLoading} error={competitionError} onRetry={loadCompetition} /></div>}
       <section className="podium">
-        <div><span>🏟️</span><div><small>ROUND</small><strong>{currentRound?.roundNumber ?? "—"}</strong></div></div>
-        <div><span>📊</span><div><small>STATE</small><strong>{currentRound ? competitionState.toLowerCase().replace(/_/g, " ") : "—"}</strong></div></div>
-        <div><span>🏆</span><div><small>SUBMISSIONS</small><strong>{currentRound?.submissions.length ?? "—"}</strong></div></div>
+        <div><span>🏟️</span><div><small>Round</small><strong>{currentRound?.roundNumber ?? "—"}</strong></div></div>
+        <div><span>📊</span><div><small>Competition</small><strong>{currentRound ? ({OPEN:"Open to everyone",WAITING:"Starting soon",SUBMISSIONS_OPEN:"Share a story",SUBMISSIONS_CLOSED:"Stories submitted",VOTING:"Voting is open",RESULTS:"See the scores"})[competitionState] : "—"}</strong></div></div>
+        <div><span>🏆</span><div><small>Stories shared</small><strong>{currentRound?.submissions.length ?? "—"}</strong></div></div>
       </section>
       <section className="how-it-works" aria-labelledby="how-it-works-title">
-        <div className="section-heading"><h2 id="how-it-works-title">A little imagination. A friendly competition.</h2><p>Three simple steps to take part.</p></div>
+        <div className="section-heading"><h2 id="how-it-works-title">Everyone has a story to tell.</h2><p>Three simple steps to take part.</p></div>
         <ol className="steps-grid">
           {[
-            ["01", "Make it yours", "Choose a nickname and write your story idea. The prompt coach can help you refine it."],
-            ["02", "Bring it to life", "Generate an AI story from your prompt and share it with the competition."],
-            ["03", "Find your favorites", "Explore the gallery, rate the entries, and see who climbs the leaderboard."]
+            ["01", "Start with an idea", "Choose a name and describe what you would like to happen. One or two sentences is enough."],
+            ["02", "Enjoy your story", "AI writes a short, funny story from your idea and shares it for everyone to read."],
+            ["03", "Read and vote", "Read other stories and give them 1 to 5 stars. Your vote counts just as much as the AI score."]
           ].map(([number, title, description]) => <li key={number}><span className="step-number" aria-hidden="true">{number}</span><h3>{title}</h3><p>{description}</p></li>)}
         </ol>
       </section>
     </main>}
 
     {page === "play" && <main id="main-content" tabIndex={-1} className="game">
-      <div className="progress"><span>PLAY</span><div><i style={{width:`${({nickname:25,prompt:50,generate:85,story:100} as Record<string,number>)[step]}%`}}/></div><span>{step.toUpperCase()}</span></div>
-      {step === "nickname" && <Card icon="👋" title="Choose a nickname" sub="Pick a name to enter the competition."><label className="field-label" htmlFor="nickname">Your nickname</label><div className="nickbox"><input id="nickname" autoComplete="nickname" value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>🎲 Surprise me</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("prompt")}>Continue →</button></Card>}
+      <div className="progress"><span>Your story</span><div><i style={{width:`${({nickname:25,prompt:50,generate:85,story:100} as Record<string,number>)[step]}%`}}/></div><span>{({nickname:"1. Your name",prompt:"2. Your idea",generate:"3. Writing",story:"4. Ready"})[step]}</span></div>
+      {step === "nickname" && <Card icon="👋" title="What name would you like to use?" sub="Use your first name or a made-up name. This name will appear beside your story."><label className="field-label" htmlFor="nickname">Your name</label><div className="nickbox"><input id="nickname" autoComplete="nickname" value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>Suggest a name</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("prompt")}>Next: write your idea →</button></Card>}
       {step === "prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} onGenerate={generate} error={generationError} isGenerating={isGenerating}/>}
 
       {step === "generate" && <Card icon="🤖" title={loading} sub="Your idea is being turned into a story…"><div className="loader" role="status" aria-live="polite"><div>🏃</div><p>Writing your story…</p></div></Card>}
       {step === "story" && activeStory && <StoryCard story={activeStory} onRegenerate={()=>generate(true)} onBackToPrompt={()=>setStep("prompt")} error={generationError} status={submissionStatus} saveError={submissionError} busy={isGenerating} onView={()=>openEntry(activeStory.id)} onBrowse={()=>setPage("gallery")}/>}
-      {step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="Gemini did not return a story this time. Your prompt is still saved."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my prompt</button></Card>}
+      {step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="We could not finish your story this time. Your idea is still here. Please try again."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my idea</button></Card>}
     </main>}
 
     {page === "gallery" && <Gallery entries={leaderboard} onOpen={openEntry} votedIds={votedIds} {...listState} />}
@@ -551,56 +556,56 @@ function App() {
       <main id="main-content" tabIndex={-1} className="content voting-screen">
         <div className="page-title compact">
           <div>
-            <span>⭐ VOTING MODE</span>
-            <h1>{selectedSubmissionId ? "Rate this entry." : "Rate the entries."}</h1>
+            <span>Your vote matters</span>
+            <h1>{selectedSubmissionId ? "What did you think of this story?" : "Find a story you enjoy."}</h1>
           </div>
-          {selectedSubmissionId && <button disabled={isSubmittingVote} className="secondary" onClick={() => { setSelectedSubmissionId(null); setPage("gallery"); }}>← Back to gallery</button>}
+          {selectedSubmissionId && <button disabled={isSubmittingVote} className="secondary" onClick={() => { setSelectedSubmissionId(null); setPage("gallery"); }}>← Back to stories</button>}
         </div>
 
         {!competitionLoading && !competitionError && <div className="voting-progress">
-          <div><strong>{eligibleEntries.length - remainingEntries.length} of {eligibleEntries.length} entries rated</strong><span>{remainingEntries.length ? `${remainingEntries.length} left to explore` : "You’re all caught up!"}</span></div>
+          <div><strong>{eligibleEntries.length - remainingEntries.length} of {eligibleEntries.length} stories rated</strong><span>{remainingEntries.length ? `${remainingEntries.length} more to read` : "You have rated every available story. Thank you!"}</span></div>
           <progress aria-label="Your voting progress" value={eligibleEntries.length - remainingEntries.length} max={Math.max(1, eligibleEntries.length)}/>
-          <button className="secondary" onClick={loadCompetition} disabled={isSubmittingVote}>Refresh entries</button>
+          <button className="secondary" onClick={loadCompetition} disabled={isSubmittingVote}>Check for new stories</button>
         </div>}
         {competitionLoading || competitionError ? <DataFeedback loading={competitionLoading} error={competitionError} onRetry={loadCompetition} /> : !currentCandidate ? (
           <section className="card centered voting-empty">
             <div className="bigicon">🗳️</div>
-            <h2>Pick an entry to vote on.</h2>
-            <p className="sub">Open any result from the gallery and rate it from there — no need to go through every entry.</p>
-            {nextEntry && <button className="primary full" onClick={()=>openEntry(nextEntry.id)}>Start rating →</button>}
-            <button className="secondary full" onClick={() => setPage("gallery")}>📖 Browse gallery</button>
+            <h2>Choose a story to read.</h2>
+            <p className="sub">Choose any story and give it 1 to 5 stars. You can read as many or as few as you like.</p>
+            {nextEntry && <button className="primary full" onClick={()=>openEntry(nextEntry.id)}>Read a story →</button>}
+            <button className="secondary full" onClick={() => setPage("gallery")}>📖 Read stories</button>
           </section>
         ) : (
           <section className="card voting-card">
             <div className="vote-header">
               <div>
-                <small>Current voter</small>
+                <small>Voting as</small>
                 <h3>{voteName.trim() || "You"}</h3>
               </div>
               <div>
-                <small>Entry theme</small>
+                <small>Story theme</small>
                 <h3>{currentCandidate.theme || "Creative Story"}</h3>
               </div>
             </div>
 
             <details className="voter-box">
               <summary>Your name (optional)</summary>
-              <label htmlFor="voter-name">Participant name</label>
-              <input disabled={isSubmittingVote} id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} maxLength={40} placeholder="Enter your participant name" />
-              <p className="rating-hint">Your votes are grouped under this voter session.</p>
+              <label htmlFor="voter-name">Your name</label>
+              <input disabled={isSubmittingVote} id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} maxLength={40} placeholder="Enter your name" />
+              <p className="rating-hint">This device remembers which stories you have rated.</p>
             </details>
             <div className="new-voter-row">
-              <span>Sharing this browser?</span>
-              <button className="secondary" type="button" disabled={isSubmittingVote} onClick={startNewVoter}>Start new voter</button>
+              <span>Passing this device to someone else?</span>
+              <button className="secondary" type="button" disabled={isSubmittingVote} onClick={startNewVoter}>Let the next person vote</button>
             </div>
 
             <div className="submission-panel">
               <div className="submission-meta">
-                <span>Prompt Olympics Result</span>
+                <span>A story to share</span>
                 <strong>{currentCandidate.participantName}</strong>
               </div>
-              <details className="entry-prompt" open><summary>Original prompt</summary><p>{currentCandidate.prompt}</p></details>
-              <h2>{currentCandidate.title ?? "Prompt Olympics Result"}</h2>
+              <details className="entry-prompt" open><summary>The idea behind this story</summary><p>{currentCandidate.prompt}</p></details>
+              <h2>{currentCandidate.title ?? "A story to share"}</h2>
               <p>{currentCandidate.resultText}</p>
               {currentCandidate.aiScore && (
                 <details className="ai-score">
@@ -616,9 +621,9 @@ function App() {
             </div>
 
             {ownEntry && <p className="feedback">This is your entry. You can read it, but you cannot vote for it.</p>}
-            {existingVote && <div className="feedback success" role="status"><strong>Already voted · {existingVote.overall} of 5 overall</strong><p>Your rating is recorded for this voter session.</p></div>}
-            <fieldset className="rating-area" disabled={isSubmittingVote || !!existingVote || ownEntry}><legend className="sr-only">Entry ratings</legend><p className="rating-hint">How was it? Choose one Overall rating to submit.</p>
-              {[ ["⭐ Overall", "overall"] ].map(([label, key]) => {
+            {existingVote && <div className="feedback success" role="status"><strong>Already voted · {existingVote.overall} of 5 overall</strong><p>Your vote has been saved. Thank you!</p></div>}
+            <fieldset className="rating-area" disabled={isSubmittingVote || !!existingVote || ownEntry}><legend className="sr-only">Entry ratings</legend><p className="rating-hint">How much did you enjoy the story? Choose 1 to 5 stars, then select Save my vote.</p>
+              {[ ["⭐ Your rating", "overall"] ].map(([label, key]) => {
                 const rating = existingVote
                   ? existingVote.ratings?.[key as keyof typeof defaultRatings] ?? (key === "overall" ? existingVote.overall : 0)
                   : voteRatings[key as keyof typeof voteRatings];
@@ -629,16 +634,16 @@ function App() {
                     {[1,2,3,4,5].map(value => <label className={`star-choice ${rating >= value ? "selected" : ""}`} key={value}>
                       <input type="radio" name={`rating-${key}`} value={value} checked={rating === value}
                         aria-label={`${label}: ${value} of 5`} onChange={()=>setVoteRatings(prev=>({...prev, [key]:value}))}/>
-                      <span aria-hidden="true">{rating >= value ? "★" : "☆"}</span>
+                      <span aria-hidden="true">{rating >= value ? "★" : "☆"}<small>{value}</small></span>
                     </label>)}
                     {key !== "overall" && rating > 0 && !existingVote && <button className="clear-rating" type="button" aria-label={`Clear ${label} rating`} onClick={()=>setVoteRatings(prev=>({...prev,[key]:0}))}>Clear</button>}
                   </div>
                 </div>
                 );
               })}
-              <details className="optional-ratings">
-                <summary>Rate more (optional)</summary>
-                {[ ["😂 Funniest", "funniest"], ["💡 Most Creative", "mostCreative"], ["✨ Best Prompt", "bestPrompt"] ].map(([label, key]) => {
+              <p className="rating-scale">1 = Not for me / 3 = Enjoyable / 5 = Loved it</p><details className="optional-ratings">
+                <summary>Give more feedback (optional)</summary>
+                {[ ["😂 How funny was it?", "funniest"], ["💡 How imaginative was it?", "mostCreative"], ["✨ How good was the idea?", "bestPrompt"] ].map(([label, key]) => {
                   const rating = existingVote?.ratings?.[key as keyof typeof defaultRatings] ?? voteRatings[key as keyof typeof voteRatings];
                   return (
                   <div className="rating-row" key={key}>
@@ -647,7 +652,7 @@ function App() {
                       {[1,2,3,4,5].map(value => <label className={`star-choice ${rating >= value ? "selected" : ""}`} key={value}>
                         <input type="radio" name={`rating-${key}`} value={value} checked={rating === value}
                           aria-label={`${label}: ${value} of 5`} onChange={()=>setVoteRatings(prev=>({...prev, [key]:value}))}/>
-                        <span aria-hidden="true">{rating >= value ? "★" : "☆"}</span>
+                        <span aria-hidden="true">{rating >= value ? "★" : "☆"}<small>{value}</small></span>
                       </label>)}
                       {rating > 0 && !existingVote && <button className="clear-rating" type="button" aria-label={`Clear ${label} rating`} onClick={()=>setVoteRatings(prev=>({...prev,[key]:0}))}>Clear</button>}
                     </div>
@@ -661,13 +666,13 @@ function App() {
             {voteSuccess && <p className="vote-success" role="status">✅ {voteSuccess}</p>}
 
             <div className="row voting-actions">
-              <button className="secondary" disabled={isSubmittingVote || !!existingVote || ownEntry} onClick={() => { setVoteError(""); setVoteRatings(defaultRatings); }} type="button">Reset</button>
-              <button className="primary" disabled={isSubmittingVote || !!existingVote || ownEntry || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : existingVote ? "Vote recorded" : "Submit my vote"}</button>
+              <button className="secondary" disabled={isSubmittingVote || !!existingVote || ownEntry} onClick={() => { setVoteError(""); setVoteRatings(defaultRatings); }} type="button">Clear my choices</button>
+              <button className="primary" disabled={isSubmittingVote || !!existingVote || ownEntry || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : existingVote ? "Vote recorded" : "Save my vote"}</button>
             </div>
             <div className="row next-actions">
-              {nextEntry && <button className="primary" disabled={isSubmittingVote} onClick={()=>openEntry(nextEntry.id)}>{existingVote || ownEntry ? "Rate another entry →" : "Skip for now →"}</button>}
-              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("gallery")}>Browse gallery</button>
-              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("leaderboard")}>View leaderboard</button>
+              {nextEntry && <button className="primary" disabled={isSubmittingVote} onClick={()=>openEntry(nextEntry.id)}>{existingVote || ownEntry ? "Read another story →" : "Skip for now →"}</button>}
+              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("gallery")}>Read stories</button>
+              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("leaderboard")}>View scores</button>
             </div>
           </section>
         )}
@@ -684,27 +689,27 @@ function PromptCoach({prompt, setPrompt, disabled}: {prompt: string; setPrompt: 
   const suggestions = Object.keys(fragments).filter(key => !prompt.includes(fragments[key].trim()))
     .sort((a, b) => analysis.vals[a] / analysis.maxBy[a] - analysis.vals[b] / analysis.maxBy[b]).slice(0, 3);
   return <aside className="inline-coach" aria-labelledby="coach-heading">
-    <h3 id="coach-heading">✨ Prompt coach <span>Optional</span></h3>
-    <p>Choose a suggestion to add it to your prompt. You can edit or remove the added text.</p>
+    <h3 id="coach-heading">✨ Need a little help? <span>Optional</span></h3>
+    <p>Choose a suggestion to add to your idea. You can change the words afterwards.</p>
     <div className="coach">{suggestions.map(key => <button key={key} type="button"
       disabled={disabled || prompt.length + fragments[key].length > 700}
-      onClick={() => setPrompt(prompt + fragments[key])}>Add {key.toLowerCase()}<small>{fragments[key].trim()}</small></button>)}</div>
-    {suggestions.some(key => prompt.length + fragments[key].length > 700) && <p>Shorten your prompt to make room for disabled suggestions.</p>}
-    {!suggestions.length && <p>All suggestions added. Make any final edits above.</p>}
+      onClick={() => setPrompt(prompt + fragments[key])}>{({Audience:"Who is it for?",Context:"Where does it happen?",Specificity:"Add a few details",Constraints:"Keep it short", "Output format":"Give it a funny ending",Creativity:"Add a surprise",Humour:"Make it playful"} as Record<string,string>)[key]}<small>{fragments[key].trim()}</small></button>)}</div>
+    {suggestions.some(key => prompt.length + fragments[key].length > 700) && <p>Your idea is quite long. Remove a few words to add another suggestion.</p>}
+    {!suggestions.length && <p>You have added all the suggestions. You can still change the words above.</p>}
   </aside>;
 }
 
 function PromptScreen({prompt,setPrompt,onGenerate,error,isGenerating}:{prompt:string,setPrompt:(s:string)=>void,onGenerate:()=>void,error:string,isGenerating:boolean}) {
   return <section className="card prompt-screen">
-    <h2>What should happen?</h2><p className="sub">Describe your story idea clearly and keep the main premise in focus.</p>
-    <label className="field-label" htmlFor="story-prompt">Your story prompt</label>
+    <h2>What should happen?</h2><p className="sub">Tell us who is in your story and what happens. A prompt is simply the idea you give to AI.</p>
+    <label className="field-label" htmlFor="story-prompt">Your story idea</label>
     <div className="prompt-wrap"><textarea id="story-prompt" aria-describedby="prompt-count" value={prompt} disabled={isGenerating}
       onChange={e=>setPrompt(e.target.value)} maxLength={700} placeholder="Example: A robot attends a family dinner and takes everything literally."/>
       <span id="prompt-count">{prompt.length} / 700 characters</span></div>
     <PromptCoach prompt={prompt} setPrompt={setPrompt} disabled={isGenerating}/>
     {error && <p className="generation-error" role="alert">⚠️ {error}</p>}
-    <p className="rating-hint">Generating a story automatically enters it into the current round.</p>
-    <button className="primary full" disabled={!prompt.trim() || prompt.length > 700 || isGenerating} onClick={()=>onGenerate()}>🤖 Generate and enter story</button>
+    <p className="rating-hint">When you create a story, it will be shared with everyone in this competition.</p>
+    <button className="primary full" disabled={!prompt.trim() || prompt.length > 700 || isGenerating} onClick={()=>onGenerate()}>Create and share my story →</button>
   </section>;
 }
 
@@ -715,58 +720,58 @@ function StoryCard({story,onRegenerate,onBackToPrompt,error,status,saveError,bus
   return <section className="card story-card" aria-busy={busy}>
     <div className="story-meta"><span>{story.theme.icon} {story.theme.title}</span><span>✨ Story ready</span></div>
     {status === "saving" && <div className="feedback" role="status">Your story is ready. Entering it into the competition…</div>}
-    {status === "saved" && <div className="feedback success"><p role="status"><strong>Your entry is in!</strong> Your story has been entered into the competition.</p>
-      <div className="row"><button className="primary" onClick={onView}>View my entry</button><button className="secondary" onClick={onBrowse}>Browse stories</button></div></div>}
-    {status === "error" && <div className="feedback"><p className="generation-error" role="alert"><strong>Submission not confirmed.</strong> {saveError}</p>
-      <p>Your generated story is still here. Check the gallery before generating again to avoid a duplicate entry.</p><button className="secondary" onClick={onBrowse}>Check gallery</button></div>}
+    {status === "saved" && <div className="feedback success"><p role="status"><strong>Your story is shared!</strong> Everyone can now read your story and vote for it.</p>
+      <div className="row"><button className="primary" onClick={onView}>Read my story</button><button className="secondary" onClick={onBrowse}>Browse stories</button></div></div>}
+    {status === "error" && <div className="feedback"><p className="generation-error" role="alert"><strong>Your story may not have been shared.</strong> {saveError}</p>
+      <p>Your story is still here. Check the story list to see whether it was shared before trying again.</p><button className="secondary" onClick={onBrowse}>Check the story list</button></div>}
     <h2>{story.title}</h2><p className="story-text">{story.text}</p>
     {error && <p className="generation-error" role="alert">⚠️ {error}</p>}
-    <p className="rating-hint">Regenerating creates another entry; it does not replace a previously submitted story.</p>
-    <button className="secondary full" disabled={busy} onClick={onRegenerate}>🔄 Regenerate Story</button>
+    <p className="rating-hint">Creating another version shares a new story. Your first story will still be there.</p>
+    <button className="secondary full" disabled={busy} onClick={onRegenerate}>Create another version</button>
     <button className="secondary full" disabled={busy} onClick={onBackToPrompt}>✍️ Write Another Story</button>
   </section>;
 }
 
 type ListStateProps = { loading: boolean; error: string; onRetry: () => void; onCreate: () => void };
 function DataFeedback({loading,error,onRetry}: Omit<ListStateProps, "onCreate">) {
-  if (loading) return <div className="feedback" role="status">Loading competition entries and scores…</div>;
-  if (error) return <div className="feedback"><p role="alert"><strong>Couldn’t load competition data.</strong> {error}</p><button className="secondary" onClick={onRetry}>Try again</button></div>;
+  if (loading) return <div className="feedback" role="status">Loading stories and scores…</div>;
+  if (error) return <div className="feedback"><p role="alert"><strong>We could not load the stories.</strong> {error}</p><button className="secondary" onClick={onRetry}>Try again</button></div>;
   return null;
 }
 function EmptyEntries({onCreate}: {onCreate: () => void}) {
   return <div className="empty"><div aria-hidden="true">🏆</div><h2>The competition starts with you.</h2>
-    <p>No entries yet. Create a story to give everyone something to vote on.</p><button className="primary" onClick={onCreate}>Create an entry</button></div>;
+    <p>Be the first to share a story. A simple idea is all you need.</p><button className="primary" onClick={onCreate}>Create a story</button></div>;
 }
 function ScoreGuide() {
   return <details className="score-guide"><summary>How are scores calculated?</summary>
-    <p>AI and public ratings are both out of 5. The combined score averages 50% AI and 50% public votes, also out of 5. Until the first vote, the AI score is provisional.</p></details>;
+    <p>Every score is out of 5. Half comes from AI and half from the average of your votes. Until someone votes, only the AI score is shown.</p></details>;
 }
 function EntryScores({entry}: {entry: LeaderboardEntry}) {
   return <span className="entry-scores"><span>AI {entry.aiScore.overall.toFixed(1)} / 5</span>
     <span>Public {entry.voteCount ? `${entry.averageScore.toFixed(1)} / 5` : "not rated"} · {entry.voteCount} {entry.voteCount === 1 ? "vote" : "votes"}</span>
-    <span className="score-equation">{entry.voteCount ? "Combined" : "Provisional"} {entry.finalScore.toFixed(1)} / {entry.scoreMax}</span></span>;
+    <span className="score-equation">{entry.voteCount ? "Total score" : "AI score"} {entry.finalScore.toFixed(1)} / {entry.scoreMax}</span></span>;
 }
 function Gallery({entries,onOpen,votedIds,loading,error,onRetry,onCreate}: ListStateProps & {entries:LeaderboardEntry[]; onOpen:(id:string)=>void; votedIds:Set<string>}) {
   const [sort,setSort]=useState("top");
   const sorted=sort === "latest" ? [...entries].sort((a,b)=>b.createdAt-a.createdAt) : entries;
   return <main id="main-content" tabIndex={-1} className="content">
-    <div className="page-title"><div><span>📖 HALL OF FAME</span><h1>Stories worth<br/><em>remembering.</em></h1></div>
-      <div className="tabs" role="group" aria-label="Sort entries">{["top","latest"].map(x=><button aria-pressed={sort===x} className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x === "top" ? "Top scores" : "Latest"}</button>)}</div></div>
+    <div className="page-title"><div><span>Stories from our community</span><h1>A little laughter,<br/><em>shared by everyone.</em></h1></div>
+      <div className="tabs" role="group" aria-label="Sort entries">{["top","latest"].map(x=><button aria-pressed={sort===x} className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x === "top" ? "Highest scores" : "Newest stories"}</button>)}</div></div>
     <DataFeedback loading={loading} error={error} onRetry={onRetry}/>
     {!loading && !error && (!sorted.length ? <EmptyEntries onCreate={onCreate}/> : <>
       <ScoreGuide/><div className="story-grid">{sorted.map(entry=><button className="mini-story" key={entry.submissionId} onClick={()=>onOpen(entry.submissionId)} type="button">
-        <div><span>✨ {entry.theme || defaultTheme.title}</span><span className="final-score"><small>{entry.voteCount ? "Combined score" : "Provisional AI"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span></div>
-        <h3>{entry.title || "Prompt Olympics Result"}</h3><p>{entry.resultText}</p><small>by {entry.participantName}</small>
-        <EntryScores entry={entry}/><span className="entry-action">{votedIds.has(entry.submissionId) ? "✓ Already voted · Read entry" : "Read and vote →"}</span>
+        <div><span>✨ {entry.theme || defaultTheme.title}</span><span className="final-score"><small>{entry.voteCount ? "Total score" : "AI score · awaiting votes"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span></div>
+        <h3>{entry.title || "A story to share"}</h3><p>{entry.resultText}</p><small>by {entry.participantName}</small>
+        <EntryScores entry={entry}/><span className="entry-action">{votedIds.has(entry.submissionId) ? "✓ You voted · Read again" : "Read and vote →"}</span>
       </button>)}</div></>)}
   </main>;
 }
 function Leaderboard({entries,loading,error,onRetry,onCreate}: ListStateProps & {entries:LeaderboardEntry[]}) {
-  return <main id="main-content" tabIndex={-1} className="content"><div className="page-title"><div><span>🥇 LEADERBOARD</span><h1>Who will take<br/><em>the podium?</em></h1></div></div>
+  return <main id="main-content" tabIndex={-1} className="content"><div className="page-title"><div><span>Community scores</span><h1>See how the<br/><em>stories are doing.</em></h1></div></div>
     <DataFeedback loading={loading} error={error} onRetry={onRetry}/>
     {!loading && !error && (!entries.length ? <EmptyEntries onCreate={onCreate}/> : <><ScoreGuide/><div className="leader">{entries.map((entry,i)=><div className="leader-row" key={entry.submissionId}>
       <strong aria-label={`Rank ${i+1}`}>{["🥇","🥈","🥉"][i] ?? `#${i+1}`}</strong>
-      <span>{entry.participantName}<EntryScores entry={entry}/></span><span className="final-score"><small>{entry.voteCount ? "Combined score" : "Provisional AI"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span>
+      <span>{entry.participantName}<EntryScores entry={entry}/></span><span className="final-score"><small>{entry.voteCount ? "Total score" : "AI score · awaiting votes"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span>
     </div>)}</div></>)}
   </main>;
 }

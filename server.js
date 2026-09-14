@@ -5,20 +5,21 @@ import { GoogleGenAI } from "@google/genai";
 import { DEFAULT_MODEL, normalizeModelName } from "./geminiConfig.js";
 import {
   buildLeaderboard,
-  createCompetition,
   createSubmission,
   createVote,
   deleteAllSubmissions,
   deleteSubmission,
   getAverageScore,
   getCurrentRound,
-  persistCompetitionStore,
-  readCompetitionStore,
   resetCompetition,
   resetVotes,
   startNewRound
 } from "./competitionStore.js";
 
+import { createCompetitionRepository, StorageError } from "./competitionRepository.js";
+
+const repository = createCompetitionRepository();
+const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res)).catch(next);
 const app = express();
 const port = process.env.PORT || 10000;
 
@@ -107,60 +108,55 @@ function serializeRound(round) {
 
 app.use(express.json({ limit: "50mb" }));
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
-    model: getModel()
-  });
-});
+app.get("/api/health", asyncRoute(async (req, res) => {
+  await repository.read();
+  res.json({ ok: true, storage: repository.kind, storageConnected: true,
+    geminiConfigured: Boolean(process.env.GEMINI_API_KEY), model: getModel() });
+}));
 
-app.get("/api/competition", (req, res) => {
-  const store = readCompetitionStore();
+app.get("/api/competition", asyncRoute(async (req, res) => {
+  const store = await repository.read();
   const round = getCurrentRound(store);
   res.json({ ok: true, state: round.state, competition: { ...store, currentRound: serializeRound(round) } });
-});
+}));
 
-app.post("/api/submissions", (req, res) => {
+app.post("/api/submissions", asyncRoute(async (req, res) => {
   try {
-    const store = readCompetitionStore();
     const participantName = typeof req.body?.participantName === "string" ? req.body.participantName.trim() : "";
     const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
     const resultText = typeof req.body?.resultText === "string" ? req.body.resultText.trim() : "";
     const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
     const theme = typeof req.body?.theme === "string" ? req.body.theme.trim() : "";
-
-    if (!participantName || !prompt || !resultText) {
-      return res.status(400).json({ error: "Participant name, prompt, and result text are required." });
-    }
-
-    const round = getCurrentRound(store);
-
-    const submission = createSubmission(store, { participantName, prompt, resultText, theme, participantSession: req.body?.participantSession });
-    if (title) submission.title = title;
-    if (theme) submission.theme = theme;
-    persistCompetitionStore(store);
-    return res.status(201).json({ ok: true, submission, round: serializeRound(round) });
+    const result = await repository.update(store => {
+      const submission = createSubmission(store, { participantName, prompt, resultText, theme, participantSession: req.body?.participantSession });
+      if (title) submission.title = title;
+      if (theme) submission.theme = theme;
+      return { ok: true, submission, round: serializeRound(getCurrentRound(store)) };
+    });
+    res.status(201).json(result);
   } catch (error) {
-    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to create submission." });
+    if (error instanceof StorageError) throw error;
+    res.status(400).json({ error: error instanceof Error ? error.message : "Unable to create submission." });
   }
-});
+}));
 
-app.post("/api/votes", (req, res) => {
+app.post("/api/votes", asyncRoute(async (req, res) => {
   try {
-    const store = readCompetitionStore();
-    const submissionId = typeof req.body?.submissionId === "string" ? req.body.submissionId : "";
-    const voterSession = typeof req.body?.voterSession === "string" ? req.body.voterSession.trim() : "";
-    const participantName = typeof req.body?.participantName === "string" ? req.body.participantName.trim() : "";
-    const ratings = req.body?.ratings && typeof req.body.ratings === "object" ? req.body.ratings : {};
-
-    const vote = createVote(store, { submissionId, voterSession, participantName, ratings });
-    persistCompetitionStore(store);
-    return res.status(201).json({ ok: true, vote, round: serializeRound(getCurrentRound(store)) });
+    const result = await repository.update(store => {
+      const vote = createVote(store, {
+        submissionId: typeof req.body?.submissionId === "string" ? req.body.submissionId : "",
+        voterSession: typeof req.body?.voterSession === "string" ? req.body.voterSession.trim() : "",
+        participantName: typeof req.body?.participantName === "string" ? req.body.participantName.trim() : "",
+        ratings: req.body?.ratings && typeof req.body.ratings === "object" ? req.body.ratings : {}
+      });
+      return { ok: true, vote, round: serializeRound(getCurrentRound(store)) };
+    });
+    res.status(201).json(result);
   } catch (error) {
-    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save vote." });
+    if (error instanceof StorageError) throw error;
+    res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save vote." });
   }
-});
+}));
 
 app.post("/api/test-gemini", async (req, res) => {
   const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
@@ -247,45 +243,38 @@ app.post("/api/generate-story", async (req, res) => {
   }
 });
 
-app.get("/api/admin/competition", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  const round = getCurrentRound(store);
-  res.json({ ok: true, adminPasswordConfigured: Boolean(adminPassword), competition: { ...store, currentRound: serializeRound(round) } });
-});
+app.get("/api/admin/competition", requireAdmin, asyncRoute(async (req, res) => {
+  const store = await repository.read();
+  res.json({ ok: true, adminPasswordConfigured: Boolean(adminPassword), competition: { ...store, currentRound: serializeRound(getCurrentRound(store)) } });
+}));
 
-app.post("/api/admin/reset-votes", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  const round = resetVotes(store);
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(round) });
-});
+// Return a downloadable backup before switching storage providers.
+app.get("/api/admin/export", requireAdmin, asyncRoute(async (req, res) => {
+  res.attachment("prompt-olympics-backup.json").json(await repository.read());
+}));
 
-app.post("/api/admin/delete-submission/:submissionId", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  const deleted = deleteSubmission(store, req.params.submissionId);
-  persistCompetitionStore(store);
-  res.json({ ok: true, deleted, currentRound: serializeRound(getCurrentRound(store)) });
-});
+const adminChanges = {
+  "reset-votes": store => { resetVotes(store); return {}; },
+  "delete-submission/:submissionId": (store, req) => ({ deleted: deleteSubmission(store, req.params.submissionId) }),
+  "delete-all-submissions": store => { deleteAllSubmissions(store); return {}; },
+  "reset-competition": store => { resetCompetition(store); return { reset: true }; },
+  "start-new-round": (store, req) => { startNewRound(store, req.body?.title || "Prompt Olympics"); return {}; }
+};
+for (const [action, change] of Object.entries(adminChanges)) {
+  app.post(`/api/admin/${action}`, requireAdmin, asyncRoute(async (req, res) => {
+    const result = await repository.update(store => {
+      const extra = change(store, req);
+      return { ok: true, ...extra, currentRound: serializeRound(getCurrentRound(store)) };
+    });
+    res.json(result);
+  }));
+}
 
-app.post("/api/admin/delete-all-submissions", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  const round = deleteAllSubmissions(store);
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(round) });
-});
-
-app.post("/api/admin/reset-competition", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  const current = resetCompetition(store);
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(current), reset: true });
-});
-
-app.post("/api/admin/start-new-round", requireAdmin, (req, res) => {
-  const store = readCompetitionStore();
-  const round = startNewRound(store, req.body?.title || "Prompt Olympics");
-  persistCompetitionStore(store);
-  res.json({ ok: true, currentRound: serializeRound(round), competition: { ...store, currentRound: serializeRound(round) } });
+app.use((error, req, res, next) => {
+  if (error instanceof StorageError) return res.status(503).json({ ok: false, storage: repository.kind, storageConnected: false, error: error.message });
+  if (error instanceof SyntaxError && error.status === 400) return res.status(400).json({ error: "The request could not be read." });
+  console.error("Request failed:", error.name);
+  return res.status(500).json({ error: "Something went wrong. Please try again." });
 });
 
 app.use(express.static(distPath));

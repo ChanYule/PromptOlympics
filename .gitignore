@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+data/
+*-backup.json
+.worktrees/
+node_modules/

@@ -339,35 +339,21 @@ export function buildLeaderboard(round) {
 }
 
 export function readCompetitionStore() {
-  try {
-    if (!fs.existsSync(STORAGE_PATH)) {
-      const store = createCompetition();
-      persistCompetitionStore(store);
-      return store;
-    }
-    const raw = fs.readFileSync(STORAGE_PATH, 'utf8');
-    if (!raw.trim()) {
-      const created = createCompetition();
-      persistCompetitionStore(created);
-      return created;
-    }
-    const parsed = JSON.parse(raw);
-    return createCompetition(parsed);
-  } catch (error) {
-    console.warn('Competition store load failed, resetting.', error);
-    const fallback = createCompetition();
-    persistCompetitionStore(fallback);
-    return fallback;
+  if (!fs.existsSync(STORAGE_PATH)) {
+    const store = createCompetition();
+    persistCompetitionStore(store);
+    return store;
   }
+  // Do not overwrite a damaged store with an empty competition.
+  const parsed = JSON.parse(fs.readFileSync(STORAGE_PATH, 'utf8'));
+  if (!Array.isArray(parsed?.rounds) || !parsed.rounds.length) throw new Error('Invalid competition data.');
+  return createCompetition(parsed);
 }
 
 export function persistCompetitionStore(store) {
-  try {
-    fs.mkdirSync(STORAGE_DIR, { recursive: true });
-    fs.writeFileSync(STORAGE_PATH, JSON.stringify(store, null, 2));
-    return store;
-  } catch (error) {
-    console.error('Unable to persist competition state.', error);
-    return store;
-  }
+  fs.mkdirSync(STORAGE_DIR, { recursive: true });
+  const temporaryPath = `${STORAGE_PATH}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(store, null, 2));
+  fs.renameSync(temporaryPath, STORAGE_PATH);
+  return store;
 }
