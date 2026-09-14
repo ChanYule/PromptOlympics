@@ -39,6 +39,7 @@ interface StoryGenerationResult {
   issues: string[];
 }
 
+/** Public judging scores are out of 5. Internal generation quality checks use 10. */
 export interface StoryScoringResult {
   funny: number;
   creativity: number;
@@ -81,11 +82,11 @@ export function scoreOtherStory(
   else if (overall >= 5) summary = "Promising material, but it needs sharper escalation or a stronger punchline.";
 
   return {
-    funny: Number(funny.toFixed(1)),
-    creativity: Number(creativity.toFixed(1)),
-    surprise: Number(surprise.toFixed(1)),
-    challengeFit: Number(challengeFit.toFixed(1)),
-    overall: Number(overall.toFixed(1)),
+    funny: Number((funny / 2).toFixed(1)),
+    creativity: Number((creativity / 2).toFixed(1)),
+    surprise: Number((surprise / 2).toFixed(1)),
+    challengeFit: Number((challengeFit / 2).toFixed(1)),
+    overall: Number((overall / 2).toFixed(1)),
     summary
   };
 }

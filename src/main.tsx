@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import { finalScore, humanScore, aiScore } from "./scoring";
 import {
   scoreOtherStory
 } from "./storyGeneration";
@@ -170,11 +171,12 @@ function buildStory(theme:Theme, prompt: string, text: string) {
   };
 }
 
-function finalScore(s:Story) {
-  if (!s.votes.length) return s.ai.overall;
-  const avg=s.votes.reduce((a,v)=>a+(v.funny+v.creative+v.surprise+v.fit)/4,0)/s.votes.length;
-  const human=((avg-1)/4)*10;
-  return s.ai.overall*.5+human*.5;
+function Weighting() {
+  return <div className="weighting" aria-label="Scoring weights: AI 50 percent, humans 50 percent"><span>AI <b>50%</b></span><span>Humans <b>50%</b></span></div>;
+}
+function ScoreBreakdown({story}:{story:Story}) {
+  const human = humanScore(story);
+  return <div className="score-summary"><Weighting/><p>{human === null ? "Provisional AI score / awaiting human votes" : `AI ${aiScore(story.ai.overall).toFixed(1)}/5 + human average ${human.toFixed(1)}/5 / equal weight`}</p></div>;
 }
 
 function App() {
@@ -185,7 +187,12 @@ function App() {
   const [prompt,setPrompt]=useState("");
   const [story,setStory]=useState<Story|null>(null);
   const storyRef=useRef<Story|null>(null);
-  const [stories,setStories]=useState<Story[]>([]);
+  const [stories,setStories]=useState<Story[]>(()=>{
+    try {
+      const raw=JSON.parse(localStorage.getItem("promptOlympicsStories") ?? "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch { return []; }
+  });
   const [judgeStory,setJudgeStory]=useState<Story|null>(null);
   const [vote,setVote]=useState({funny:0,creative:0,surprise:0,fit:0});
   const [myJudged,setMyJudged]=useState(false);
@@ -198,14 +205,14 @@ function App() {
   const [sound,setSound]=useState(true);
   const [admin,setAdmin]=useState(false);
 
-  useEffect(()=>{ try { const raw=localStorage.getItem("promptOlympicsStories"); if(raw)setStories(JSON.parse(raw)); } catch {} },[]);
   useEffect(()=>{ localStorage.setItem("promptOlympicsStories",JSON.stringify(stories)); },[stories]);
 
   const analysis=useMemo(()=>promptAnalysis(prompt),[prompt]);
   const categories=Object.entries(analysis.vals);
   const availableJudge=stories.filter(s=>s.author.toLowerCase()!==nickname.trim().toLowerCase() && !s.votes.some(v=>v.voter.toLowerCase()===nickname.trim().toLowerCase()));
   const humanAvg=judgeStory && vote.funny&&vote.creative&&vote.surprise&&vote.fit ? (vote.funny+vote.creative+vote.surprise+vote.fit)/4 : 0;
-  const activeStory=story ?? storyRef.current;
+  const currentStory=story ?? storyRef.current;
+  const activeStory=stories.find(s=>s.id===currentStory?.id) ?? currentStory;
 
   function startPlay() {
     storyRef.current=null; setNickname(randomNick()); setTheme(themes[Math.floor(Math.random()*themes.length)]); setPrompt(""); setStory(null); setMyJudged(false); setStep("nickname"); setPage("play");
@@ -263,8 +270,8 @@ function App() {
   return <div className={shellClass}>
     <header className="topbar">
       <button className="brand" onClick={()=>nav("home")}><span className="brand-mark">🏅</span><span>Prompt <b>Olympics</b></span></button>
-      <nav>{(["home","play","gallery","leaderboard","guide"] as const).map(p=><button className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{p==="home"?"Home":p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
-      <button className="tiny" onClick={()=>setAdmin(!admin)}>⚙️</button>
+      <nav aria-label="Main navigation">{(["home","play","gallery","leaderboard","guide"] as const).map(p=><button aria-current={page===p?"page":undefined} className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{p==="home"?"Home":p[0].toUpperCase()+p.slice(1)}</button>)}</nav>
+      <button aria-label="Event settings" aria-expanded={admin} className="tiny" onClick={()=>setAdmin(!admin)}>⚙️</button>
     </header>
 
     {admin && <div className="adminbar">
@@ -282,11 +289,11 @@ function App() {
         <div className="eyebrow">🏟️ THE AI COMEDY CHALLENGE</div>
         <h1>Create.<br/><span>Laugh.</span> Judge.<br/>Compete.</h1>
         <p>Can your prompt write the funniest story? Write a prompt, watch AI turn it into comedy, then decide if other players can beat the AI judge.</p>
-        <div className="hero-actions"><button className="primary" onClick={startPlay}>🚀 Start the Challenge</button><button className="secondary" onClick={()=>setPage("gallery")}>👀 See the Hall of Fame</button></div>
+        <Weighting/><div className="hero-actions"><button className="primary" onClick={startPlay}>🚀 Start the Challenge</button><button className="secondary" onClick={()=>setPage("gallery")}>👀 See the Hall of Fame</button></div>
         <div className="explainer"><div><b>✍️</b><strong>Write</strong><small>Craft your prompt</small></div><div className="arrow">→</div><div><b>🤖</b><strong>Generate</strong><small>AI creates the story</small></div><div className="arrow">→</div><div><b>🧑‍⚖️</b><strong>Judge</strong><small>Beat the AI judge</small></div></div>
       </section>
       <section className="podium">
-        <div><span>🏆</span><div><small>TOP SCORE</small><strong>{stories.length?Math.max(...stories.map(finalScore)).toFixed(1):"—"}</strong></div></div>
+        <div><span>🏆</span><div><small>TOP SCORE (PROVISIONAL UNTIL VOTED)</small><strong>{stories.length?Math.max(...stories.map(finalScore)).toFixed(1):"—"}</strong></div></div>
         <div><span>📚</span><div><small>STORIES PUBLISHED</small><strong>{stories.length||"—"}</strong></div></div>
         <div><span>😂</span><div><small>AVERAGE SCORE</small><strong>{stories.length?(stories.reduce((a,s)=>a+finalScore(s),0)/stories.length).toFixed(1):"—"}</strong></div></div>
       </section>
@@ -336,31 +343,32 @@ function StoryCard({story,onContinue,onRegenerate,error}:{story:Story,onContinue
   return <section className="card story-card"><div className="story-meta"><span>{story.theme.icon} {story.theme.title}</span><span>🔥 Prompt Power {story.promptPower}</span></div><h2>{story.title}</h2><p className="story-text">{story.text}</p>{error && <p className="generation-error" role="alert">⚠️ {error}</p>}<button className="secondary full" onClick={onRegenerate}>🔄 Regenerate Story</button><div className="secret"><span>🔒 AI verdict hidden</span><small>Judge another player's story first to reveal your score.</small></div><button className="primary full" onClick={onContinue}>🧑‍⚖️ Judge Another Player's Story →</button></section>
 }
 function Rating({label,icon,value,onChange}:{label:string,icon:string,value:number,onChange:(n:number)=>void}) {
- return <div className="rating"><b>{icon} {label}</b><div>{[1,2,3,4,5].map(n=><button className={n===value?"selected":""} onClick={()=>onChange(n)} key={n}>{n}</button>)}</div></div>
+ return <div className="rating"><b>{icon} {label}</b><div role="group" aria-label={label}>{[1,2,3,4,5].map(n=><button aria-label={`${label}: ${n} out of 5`} aria-pressed={n===value} className={n===value?"selected":""} onClick={()=>onChange(n)} key={n}>{n}</button>)}</div></div>
 }
 function JudgeCard({story,vote,setVote,onSubmit}:{story:Story,vote:any,setVote:(v:any)=>void,onSubmit:()=>void}) {
  const scorePreview = scoreOtherStory(story.text, story.theme.title, story.prompt);
- return <section className="card judge-card"><div className="judge-label">🧑‍⚖️ YOU ARE THE JUDGE · BLIND</div><div className="challenge-banner compact"><span>Challenge</span><strong>{story.theme.title}</strong></div><h2>{story.title}</h2><p className="story-text">{story.text}</p><div className="quick-score"><div><span>Quick score</span><strong>{scorePreview.overall.toFixed(1)}/10</strong></div><small>{scorePreview.summary}</small></div><div className="ratings"><Rating label="Funny" icon="😂" value={vote.funny} onChange={n=>setVote({...vote,funny:n})}/><Rating label="Creative" icon="💡" value={vote.creative} onChange={n=>setVote({...vote,creative:n})}/><Rating label="Surprising" icon="🤯" value={vote.surprise} onChange={n=>setVote({...vote,surprise:n})}/><Rating label="Fits the Challenge" icon="🎯" value={vote.fit} onChange={n=>setVote({...vote,fit:n})}/></div><button className="primary full" disabled={Object.values(vote).some((v:any)=>!v)} onClick={onSubmit}>Submit My Verdict ⚖️</button></section>
+ return <section className="card judge-card"><div className="judge-label">🧑‍⚖️ YOU ARE THE JUDGE · BLIND</div><div className="challenge-banner compact"><span>Challenge</span><strong>{story.theme.title}</strong></div><h2>{story.title}</h2><p className="story-text">{story.text}</p><div className="quick-score"><div><span>Quick score</span><strong>{scorePreview.overall.toFixed(1)}/5</strong></div><small>{scorePreview.summary}</small></div><Weighting/><p className="rating-help">Rate each category from 1 (low) to 5 (high). Human votes are averaged, then count for half the score.</p><div className="ratings"><Rating label="Funny" icon="😂" value={vote.funny} onChange={n=>setVote({...vote,funny:n})}/><Rating label="Creative" icon="💡" value={vote.creative} onChange={n=>setVote({...vote,creative:n})}/><Rating label="Surprising" icon="🤯" value={vote.surprise} onChange={n=>setVote({...vote,surprise:n})}/><Rating label="Fits the Challenge" icon="🎯" value={vote.fit} onChange={n=>setVote({...vote,fit:n})}/></div><button className="primary full" disabled={Object.values(vote).some((v:any)=>!v)} onClick={onSubmit}>Submit My Verdict ⚖️</button></section>
 }
 function Reveal({story,humanAvg,onNext}:{story:Story,humanAvg:number,onNext:()=>void}) {
- return <section className="card reveal"><div className="bigicon">⚖️</div><h2>Humans vs AI</h2><p className="sub">Here's how your verdict compares.</p><div className="compare"><div><span>🧑‍⚖️ HUMAN</span><strong>{(((humanAvg-1)/4)*10).toFixed(1)}</strong><small>/ 10</small></div><div><span>🤖 AI</span><strong>{story.ai.overall.toFixed(1)}</strong><small>/ 10</small></div></div><div className="ai-breakdown">{[["😂 Humour",story.ai.humour],["💡 Creativity",story.ai.creativity],["🤯 Surprise",story.ai.surprise],["✍️ Prompt Quality",story.ai.promptQuality],["🎯 Challenge Fit",story.ai.fit]].map(([k,v])=><div key={String(k)}><span>{k}</span><b>{Number(v).toFixed(1)}</b></div>)}</div><p className="verdict">{Math.abs(((humanAvg-1)/4)*10-story.ai.overall)<1?"🤝 Humans and AI agree!":(((humanAvg-1)/4)*10>story.ai.overall?"😂 You loved this more than the AI!":"🤖 AI saw the comedy before you did!")}</p><p className="commentary">“{story.ai.commentary}”</p><button className="primary full" onClick={onNext}>Next Story →</button></section>
+ return <section className="card reveal"><div className="bigicon">⚖️</div><h2>Humans vs AI</h2><p className="sub">Here's how your verdict compares.</p><div className="compare"><div><span>🧑‍⚖️ HUMAN</span><strong>{(humanAvg).toFixed(1)}</strong><small>/ 5</small></div><div><span>🤖 AI</span><strong>{aiScore(story.ai.overall).toFixed(1)}</strong><small>/ 5</small></div></div><ScoreBreakdown story={story}/><div className="ai-breakdown">{[["😂 Humour",story.ai.humour],["💡 Creativity",story.ai.creativity],["🤯 Surprise",story.ai.surprise],["✍️ Prompt Quality",story.ai.promptQuality],["🎯 Challenge Fit",story.ai.fit]].map(([k,v])=><div key={String(k)}><span>{k}</span><b>{aiScore(Number(v)).toFixed(1)}</b></div>)}</div><p className="verdict">{Math.abs(humanAvg-aiScore(story.ai.overall))<0.5?"🤝 Humans and AI agree!":(humanAvg>aiScore(story.ai.overall)?"😂 You loved this more than the AI!":"🤖 AI saw the comedy before you did!")}</p><p className="commentary">“{story.ai.commentary}”</p><button className="primary full" onClick={onNext}>Next Story →</button></section>
 }
 function Results({story,myJudged,onAgain,onHall}:{story:Story,myJudged:boolean,onAgain:()=>void,onHall:()=>void}) {
  const score=finalScore(story);
- return <section className="card result"><div className="bigicon">🏆</div><span>YOUR FINAL SCORE</span><div className="score">{myJudged?score.toFixed(1):"—"}<small>/10</small></div><h2>{myJudged?(score>=9?"🏅 Prompt Champion!":score>=7.5?"🌟 Strong showing!":"👏 Nice first run!"):"Judge one more story to unlock your result!"}</h2><p className="sub">{myJudged?story.ai.commentary:"Your AI verdict stays hidden until you complete a blind judgement."}</p><div className="row"><button className="secondary" onClick={onHall}>🏆 Hall of Fame</button><button className="primary" onClick={onAgain}>🔄 Play Again</button></div></section>
+ return <section className="card result"><div className="bigicon">🏆</div><span>{story.votes.length?"YOUR COMBINED SCORE":"YOUR PROVISIONAL SCORE"}</span><div className="score">{myJudged?score.toFixed(1):"—"}<small>/5</small></div>{myJudged && <ScoreBreakdown story={story}/>}<h2>{myJudged?(score>=4.5?"🏅 Prompt Champion!":score>=3.75?"🌟 Strong showing!":"👏 Nice first run!"):"Judge one more story to unlock your result!"}</h2><p className="sub">{myJudged?story.ai.commentary:"Your AI verdict stays hidden until you complete a blind judgement."}</p><div className="row"><button className="secondary" onClick={onHall}>🏆 Hall of Fame</button><button className="primary" onClick={onAgain}>🔄 Play Again</button></div></section>
 }
 function Gallery({stories}:{stories:Story[]}) {
  const [sort,setSort]=useState("top"); const sorted=[...stories].sort((a,b)=>sort==="latest"?b.createdAt-a.createdAt:finalScore(b)-finalScore(a));
- return <main className="content"><div className="page-title"><div><span>📖 HALL OF FAME</span><h1>Stories worth<br/><em>remembering.</em></h1></div><div className="tabs">{["top","latest"].map(x=><button className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x}</button>)}</div></div>{!sorted.length?<Empty icon="🏆" title="Be the first Prompt Olympian!" text="Create the first story and it will appear here."/>:<div className="story-grid">{sorted.map(s=><article className="mini-story" key={s.id}><div><span>{s.theme.icon} {s.theme.title}</span><b>{finalScore(s).toFixed(1)}</b></div><h3>{s.title}</h3><p>{s.text}</p><small>by {s.author} · 🔥 {s.promptPower} · {s.votes.length} votes</small></article>)}</div>}</main>
+ return <main className="content"><div className="page-title"><div><span>📖 HALL OF FAME</span><h1>Stories worth<br/><em>remembering.</em></h1></div><div className="tabs">{["top","latest"].map(x=><button className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x}</button>)}</div></div>{!sorted.length?<Empty icon="🏆" title="Be the first Prompt Olympian!" text="Create the first story and it will appear here."/>:<div className="story-grid">{sorted.map(s=><article className="mini-story" key={s.id}><div><span>{s.theme.icon} {s.theme.title}</span><b>{finalScore(s).toFixed(1)}<small>/5</small></b></div><h3>{s.title}</h3><p>{s.text}</p><p className="score-status">{s.votes.length?"50% AI + 50% humans":"Provisional / awaiting human votes"}</p><small>by {s.author} · 🔥 {s.promptPower} · {s.votes.length} votes</small></article>)}</div>}</main>
 }
 function Leaderboard({stories}:{stories:Story[]}) {
  const sorted=[...stories].sort((a,b)=>finalScore(b)-finalScore(a));
- return <main className="content"><div className="page-title"><div><span>🥇 LEADERBOARD</span><h1>Who will take<br/><em>the podium?</em></h1></div></div>{!sorted.length?<Empty icon="🏆" title="The podium is waiting." text="Be the first Prompt Olympian to claim gold."/>:<div className="leader">{sorted.map((s,i)=><div className="leader-row" key={s.id}><strong>{i+1===1?"🥇":i+1===2?"🥈":i+1===3?"🥉":`#${i+1}`}</strong><span>{s.author}<small>{s.title}</small></span><b>{finalScore(s).toFixed(1)}</b></div>)}</div>}</main>
+ return <main className="content"><div className="page-title"><div><span>🥇 LEADERBOARD</span><h1>Who will take<br/><em>the podium?</em></h1></div></div><ScoreRules/>{!sorted.length?<Empty icon="🏆" title="The podium is waiting." text="Be the first Prompt Olympian to claim gold."/>:<div className="leader">{sorted.map((s,i)=><div className="leader-row" key={s.id}><strong>{i+1===1?"🥇":i+1===2?"🥈":i+1===3?"🥉":`#${i+1}`}</strong><span>{s.author}<small>{s.title}</small><small className="score-status">{s.votes.length?`${s.votes.length} votes / 50% AI + 50% humans`:"Provisional / awaiting human votes"}</small></span><b>{finalScore(s).toFixed(1)}<small>/5</small></b></div>)}</div>}</main>
 }
+function ScoreRules() { return <div className="score-rules"><Weighting/><p>Every voice counts. AI scores and average human ratings are both out of 5, then combined with equal weight. Scores awaiting votes are provisional.</p></div> }
 function Empty({icon,title,text}:{icon:string,title:string,text:string}) { return <div className="empty"><div>{icon}</div><h2>{title}</h2><p>{text}</p></div> }
 function Guide({onPlay}:{onPlay:()=>void}) {
  const powers=[["🎯","Goal","Say exactly what you want the AI to create."],["👥","Audience","Tell it who the story is for."],["📍","Context","Give the situation, place or reason."],["🔍","Specificity","Add concrete details instead of vague ideas."],["💥","Creativity","Ask for twists, surprises and unusual details."]];
- return <main className="content guide"><div className="page-title"><div><span>📚 QUICK GUIDE</span><h1>Five Prompt<br/><em>Powers.</em></h1></div></div><p className="lead">A strong prompt gives AI enough direction to be useful while leaving room for creativity.</p><div className="powers">{powers.map((p,i)=><div key={p[1]}><strong>{i+1}</strong><span>{p[0]}</span><section><h3>{p[1]}</h3><p>{p[2]}</p></section></div>)}</div><div className="formula"><b>Prompt formula</b><p>“Create <mark>WHAT</mark> for <mark>WHO</mark>, in <mark>WHAT CONTEXT</mark>, with <mark>SPECIFIC DETAILS</mark> and <mark>ONE SURPRISE</mark>.”</p></div><button className="primary" onClick={onPlay}>🚀 Try it yourself</button></main>
+ return <main className="content guide"><div className="page-title"><div><span>📚 QUICK GUIDE</span><h1>Five Prompt<br/><em>Powers.</em></h1></div></div><p className="lead">A strong prompt gives AI enough direction to be useful while leaving room for creativity.</p><div className="powers">{powers.map((p,i)=><div key={p[1]}><strong>{i+1}</strong><span>{p[0]}</span><section><h3>{p[1]}</h3><p>{p[2]}</p></section></div>)}</div><ScoreRules/><div className="formula"><b>Prompt formula</b><p>“Create <mark>WHAT</mark> for <mark>WHO</mark>, in <mark>WHAT CONTEXT</mark>, with <mark>SPECIFIC DETAILS</mark> and <mark>ONE SURPRISE</mark>.”</p></div><button className="primary" onClick={onPlay}>🚀 Try it yourself</button></main>
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
