@@ -40,3 +40,7 @@ The development Vite server does not run the server API. To test Gemini locally,
 - Voting, leaderboard and gallery work locally on the same browser.
 - The Admin button is a lightweight demo control panel, not a production password/authentication system.
 - For a true multi-device/public deployment, replace localStorage with a server/database and add server-side moderation, Zod validation, vote constraints and a password-protected admin API as specified in the master prompt.
+
+## Scoring
+
+AI and human ratings are out of 5. Once voted, the combined score is 50% AI plus 50% average human rating, out of 5. Unvoted scores are provisional AI scores. Existing ten-point AI scores are automatically converted once. Run `node --test competitionStore.test.js geminiConfig.test.js` to check server behavior.
