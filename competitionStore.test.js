@@ -53,7 +53,7 @@ test('scores a submission on funny, creativity and relevance as soon as it is cr
 
   assert.ok(submission.aiScore);
   for (const key of ['funny', 'creativity', 'relevance', 'overall']) {
-    assert.ok(submission.aiScore[key] >= 0 && submission.aiScore[key] <= 10);
+    assert.ok(submission.aiScore[key] >= 0 && submission.aiScore[key] <= 5);
   }
 
   const leaderboard = buildLeaderboard(getCurrentRound(store));
@@ -61,7 +61,7 @@ test('scores a submission on funny, creativity and relevance as soon as it is cr
   assert.equal(leaderboard[0].finalScore, submission.aiScore.overall);
 });
 
-test('adds the public rating to the AI score once votes exist', () => {
+test('averages AI and public ratings equally once votes exist', () => {
   const store = createCompetition();
   const submission = createSubmission(store, {
     participantName: 'Alice',
@@ -72,9 +72,9 @@ test('adds the public rating to the AI score once votes exist', () => {
 
   const leaderboard = buildLeaderboard(getCurrentRound(store));
   const entry = leaderboard[0];
-  const expectedFinal = Number((entry.aiScore.overall + entry.averageScore).toFixed(2));
+  const expectedFinal = Number(((entry.aiScore.overall + entry.averageScore) / 2).toFixed(2));
   assert.equal(entry.finalScore, expectedFinal);
-  assert.equal(entry.scoreMax, 15);
+  assert.equal(entry.scoreMax, 5);
 });
 
 test('keeps submissions and voting open at the same time', () => {
@@ -258,4 +258,32 @@ test('different browser sessions can vote independently but changing a name cann
   for (const voterSession of ['browser-a', 'browser-b']) createVote(store, { submissionId: entry.id, voterSession, ratings: { overall: 4 } });
   assert.throws(() => createVote(store, { submissionId: entry.id, voterSession: ' BROWSER-A ', participantName: 'New name', ratings: { overall: 5 } }), /duplicate/i);
   assert.equal(getCurrentRound(store).votes.length, 2);
+});
+
+
+test('converts legacy scores once and preserves votes across reloads', () => {
+  const store = createCompetition();
+  const entry = createSubmission(store, { participantName: 'Test', prompt: 'A', resultText: 'B' });
+  entry.aiScore = { funny: 8, creativity: 6, relevance: 4, overall: 6 };
+  createVote(store, { submissionId: entry.id, voterSession: 'reader', ratings: { overall: 5 } });
+  const migrated = createCompetition(JSON.parse(JSON.stringify(store)));
+  const reloaded = createCompetition(JSON.parse(JSON.stringify(migrated)));
+  for (const round of [getCurrentRound(store), getCurrentRound(migrated), getCurrentRound(reloaded)]) {
+    const score = buildLeaderboard(round)[0];
+    assert.equal(score.aiScore.overall, 3);
+    assert.equal(score.aiScore.max, 5);
+    assert.equal(score.averageScore, 5);
+    assert.equal(score.finalScore, 4);
+    assert.equal(score.scoreMax, 5);
+  }
+});
+
+test('additional voters cannot change the fifty-fifty weighting', () => {
+  const store = createCompetition();
+  const entry = createSubmission(store, { participantName: 'Test', prompt: 'A', resultText: 'B' });
+  entry.aiScore = { funny: 5, creativity: 5, relevance: 5, overall: 5, max: 5 };
+  for (let i = 0; i < 20; i++) {
+    createVote(store, { submissionId: entry.id, voterSession: `reader-${i}`, ratings: { overall: 1 } });
+    assert.equal(buildLeaderboard(getCurrentRound(store))[0].finalScore, 3);
+  }
 });

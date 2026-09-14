@@ -60,7 +60,17 @@ export function scoreSubmission(prompt, resultText, theme = '') {
   const relevance = clampScore(2 + promptMatches * 1.1 + themeMatches * 0.8);
   const overall = clampScore((funny + creativity + relevance) / 3);
 
-  return { funny, creativity, relevance, overall };
+  return { funny: funny / 2, creativity: creativity / 2, relevance: relevance / 2, overall: overall / 2, max: 5 };
+}
+
+function fivePointAiScore(submission) {
+  const score = submission.aiScore;
+  if (!score) return scoreSubmission(submission.prompt, submission.resultText, submission.theme);
+  if (score.max === 5) return score;
+  // Scores saved before this change were out of ten. Mark converted values
+  // so subsequent reads and saves cannot halve them a second time.
+  return { funny: score.funny / 2, creativity: score.creativity / 2,
+    relevance: score.relevance / 2, overall: score.overall / 2, max: 5 };
 }
 
 export function createRound(roundNumber = 1, title = 'Prompt Olympics') {
@@ -95,7 +105,8 @@ export function createCompetition(initial = {}) {
     ...createRound(index + 1, round.title || safeStore.name || 'Prompt Olympics'),
     ...round,
     state: normalizeState(round.state),
-    submissions: Array.isArray(round.submissions) ? round.submissions : [],
+    submissions: Array.isArray(round.submissions)
+      ? round.submissions.map(submission => ({ ...submission, aiScore: fivePointAiScore(submission) })) : [],
     votes: Array.isArray(round.votes) ? round.votes : [],
     roundNumber: typeof round.roundNumber === 'number' ? round.roundNumber : index + 1,
     title: sanitizeText(round.title, safeStore.name || 'Prompt Olympics') || (safeStore.name || 'Prompt Olympics'),
@@ -281,9 +292,9 @@ export function buildLeaderboard(round) {
       const averageScore = votes.length
         ? Number((votes.reduce((sum, vote) => sum + Number(vote.overall ?? vote.ratings?.overall ?? 0), 0) / votes.length).toFixed(2))
         : 0;
-      const aiScore = submission.aiScore ?? scoreSubmission(submission.prompt, submission.resultText, submission.theme);
-      // The public score is added directly to the AI score: 10 points from AI plus 5 from voters.
-      const finalScore = Number((aiScore.overall + averageScore).toFixed(2));
+      const aiScore = fivePointAiScore(submission);
+      // Both scores are out of five. Vote count never changes their equal weight.
+      const finalScore = Number((votes.length ? (aiScore.overall + averageScore) / 2 : aiScore.overall).toFixed(2));
 
       return {
         submissionId: submission.id,
@@ -296,12 +307,12 @@ export function buildLeaderboard(round) {
         averageScore,
         voteCount: votes.length,
         finalScore,
-        scoreMax: votes.length ? 15 : 10,
+        scoreMax: 5,
         createdAt: submission.createdAt
       };
     })
     .sort((a, b) => {
-      // Tie-break rule: higher final score (AI + votes) wins; if tied, more votes wins; if still tied, alphabetical name for a stable order.
+      // Higher combined score wins; then vote count, then alphabetical name.
       if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
       if (b.voteCount !== a.voteCount) return b.voteCount - a.voteCount;
       return a.participantName.localeCompare(b.participantName);
