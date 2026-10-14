@@ -7,7 +7,14 @@
     "dev": "node ./node_modules/vite/bin/vite.js --host 0.0.0.0",
     "build": "node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port 4173",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test --test-isolation=none competitionStore.test.js competitionRepository.test.js geminiConfig.test.js tests/*.test.mjs",
+    "typecheck": "tsc -b",
+    "test:e2e": "playwright test",
+    "test:load": "node scripts/load-test.mjs",
+    "db:dry-run": "node scripts/import-supabase.js data/competition.json --dry-run",
+    "format:check": "node ./node_modules/prettier/bin/prettier.cjs --check server.js competitionRepository.js competitionStore.js localRepository.js aiService.js security.js src/main.tsx src/styles.css src/api.ts src/types.ts src/useFeed.ts src/scoring.ts src/i18n.ts src/locales/zh.ts tests scripts README.md AUDIT.md SUPABASE_SETUP.md GEMINI_SETUP.md LIVE_EVENT_CHECKLIST.md TROUBLESHOOTING.md package.json render.yaml playwright.config.ts vite.config.ts",
+    "test:i18n": "node scripts/i18n-audit.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",
@@ -19,8 +26,16 @@
     "vite": "^6.0.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@electric-sql/pglite": "^0.5.9",
+    "@playwright/test": "^1.64.0",
     "@types/node": "^22.20.1",
     "@types/react": "^19.0.2",
-    "@types/react-dom": "^19.0.2"
+    "@types/react-dom": "^19.0.2",
+    "pg": "^8.23.1",
+    "prettier": "^3.9.10"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   }
 }

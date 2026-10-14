@@ -5,3 +5,10 @@ data/
 *-backup.json
 .worktrees/
 node_modules/
+backups/
+test-results/
+playwright-report/
+reports/private/
+dist/
+reports/*console*.txt
+reports/format*.txt

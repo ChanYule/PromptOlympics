@@ -1,359 +1,194 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
+﻿import { randomUUID } from "node:crypto";
 export const COMPETITION_STATES = [
-  'OPEN',
-  'WAITING',
-  'SUBMISSIONS_OPEN',
-  'SUBMISSIONS_CLOSED',
-  'VOTING',
-  'RESULTS'
+  "WAITING",
+  "SUBMISSIONS_OPEN",
+  "SUBMISSIONS_CLOSED",
+  "VOTING",
+  "RESULTS",
 ];
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const STORAGE_DIR = path.join(__dirname, 'data');
-const STORAGE_PATH = path.join(STORAGE_DIR, 'competition.json');
-
-function makeId(prefix = 'item') {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
-}
-
-function normalizeState(value) {
-  return 'OPEN';
-}
-
-function validateRating(value, required = false) {
-  if (!required && (value === undefined || value === null || value === 0)) return 0;
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 5) {
-    throw new Error('Ratings must be whole numbers between 1 and 5. Overall is required.');
+export const TRANSITIONS = {
+  WAITING: ["SUBMISSIONS_OPEN"],
+  SUBMISSIONS_OPEN: ["SUBMISSIONS_CLOSED"],
+  SUBMISSIONS_CLOSED: ["VOTING"],
+  VOTING: ["SUBMISSIONS_CLOSED", "RESULTS"],
+  RESULTS: [],
+};
+export class DomainError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
   }
-  return value;
 }
-
-function sanitizeText(value, fallback = '') {
-  return typeof value === 'string' ? value.trim() : fallback;
-}
-
-const FUNNY_PATTERN = /\b(funny|joke|laugh|absurd|silly|ridiculous|chaos|oops|pun|giggle|hilarious|comedy)\b/gi;
-const CREATIVITY_PATTERN = /\b(creative|unexpected|twist|clever|surprising|wild|strange|oddball|inventive|impossible|magical|bizarre)\b/gi;
-
-function clampScore(value) {
-  return Number(Math.max(0, Math.min(10, value)).toFixed(1));
-}
-
-const GRADING_VERSION = 2;
-
-function lenientScore(score) {
-  // Award 40% of the remaining headroom while preserving score ordering.
-  return Number(Math.min(5, Math.max(0, score + (5 - score) * 0.4)).toFixed(2));
-}
-
-function applyGradingCurve(score) {
+export function createRound(number = 1, title = "Prompt Olympics") {
   return {
-    funny: lenientScore(score.funny),
-    creativity: lenientScore(score.creativity),
-    relevance: lenientScore(score.relevance),
-    overall: lenientScore(score.overall),
-    max: 5,
-    gradingVersion: GRADING_VERSION
-  };
-}
-
-// Heuristic "AI judge": scores a submission on funny/creativity/relevance as soon as it is created,
-// before any human votes exist. Human votes are blended in later once they arrive.
-export function scoreSubmission(prompt, resultText, theme = '') {
-  const text = sanitizeText(resultText, '').toLowerCase();
-  const promptWords = sanitizeText(prompt, '').toLowerCase().match(/[a-z0-9]+/g) ?? [];
-  const themeWords = sanitizeText(theme, '').toLowerCase().match(/[a-z0-9]+/g) ?? [];
-
-  const funnyHits = (text.match(FUNNY_PATTERN) ?? []).length;
-  const creativityHits = (text.match(CREATIVITY_PATTERN) ?? []).length;
-  const promptMatches = promptWords.filter((word) => word.length > 3 && text.includes(word)).length;
-  const themeMatches = themeWords.filter((word) => word.length > 3 && text.includes(word)).length;
-
-  const funny = clampScore(3 + funnyHits * 1.1 + (text.length > 80 ? 1 : 0));
-  const creativity = clampScore(2.5 + creativityHits * 1.2 + (text.length > 120 ? 1 : 0));
-  const relevance = clampScore(2 + promptMatches * 1.1 + themeMatches * 0.8);
-  const overall = clampScore((funny + creativity + relevance) / 3);
-
-  return applyGradingCurve({ funny: funny / 2, creativity: creativity / 2, relevance: relevance / 2, overall: overall / 2 });
-}
-
-function fivePointAiScore(submission) {
-  const score = submission.aiScore;
-  if (!score) return scoreSubmission(submission.prompt, submission.resultText, submission.theme);
-  if (score.max === 5 && score.gradingVersion === GRADING_VERSION) return score;
-  if (score.max === 5) return applyGradingCurve(score);
-  // Scores saved before this change were out of ten. Mark converted values
-  // so subsequent reads and saves cannot halve them a second time.
-  return applyGradingCurve({ funny: score.funny / 2, creativity: score.creativity / 2,
-    relevance: score.relevance / 2, overall: score.overall / 2 });
-}
-
-export function createRound(roundNumber = 1, title = 'Prompt Olympics') {
-  return {
-    id: makeId('round'),
-    title: sanitizeText(title, 'Prompt Olympics') || 'Prompt Olympics',
-    roundNumber,
-    state: 'OPEN',
+    id: randomUUID(),
+    title,
+    roundNumber: number,
+    state: "WAITING",
+    minVotes: 5,
     submissions: [],
     votes: [],
     createdAt: Date.now(),
-    updatedAt: Date.now()
   };
 }
-
 export function createCompetition(initial = {}) {
-  const safeStore = {
-    id: 'prompt-olympics',
-    name: 'Prompt Olympics',
+  return {
+    id: "prompt-olympics",
+    name: "Prompt Olympics",
     currentRoundIndex: 0,
-    rounds: [createRound(1, initial.name || 'Prompt Olympics')],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    ...initial
+    rounds: [createRound()],
+    jobs: [],
+    audit: [],
+    codes: [],
+    limits: [],
+    ...initial,
   };
-
-  if (!Array.isArray(safeStore.rounds) || safeStore.rounds.length === 0) {
-    safeStore.rounds = [createRound(1, safeStore.name || 'Prompt Olympics')];
-  }
-
-  safeStore.rounds = safeStore.rounds.map((round, index) => ({
-    ...createRound(index + 1, round.title || safeStore.name || 'Prompt Olympics'),
-    ...round,
-    state: normalizeState(round.state),
-    submissions: Array.isArray(round.submissions)
-      ? round.submissions.map(submission => ({ ...submission, aiScore: fivePointAiScore(submission) })) : [],
-    votes: Array.isArray(round.votes) ? round.votes : [],
-    roundNumber: typeof round.roundNumber === 'number' ? round.roundNumber : index + 1,
-    title: sanitizeText(round.title, safeStore.name || 'Prompt Olympics') || (safeStore.name || 'Prompt Olympics'),
-    createdAt: typeof round.createdAt === 'number' ? round.createdAt : Date.now(),
-    updatedAt: typeof round.updatedAt === 'number' ? round.updatedAt : Date.now()
-  }));
-
-  if (typeof safeStore.currentRoundIndex !== 'number' || safeStore.currentRoundIndex < 0) {
-    safeStore.currentRoundIndex = 0;
-  }
-  if (safeStore.currentRoundIndex >= safeStore.rounds.length) {
-    safeStore.currentRoundIndex = safeStore.rounds.length - 1;
-  }
-
-  return safeStore;
 }
-
 export function getCurrentRound(store) {
-  const nextStore = store || createCompetition();
-  if (!Array.isArray(nextStore.rounds) || nextStore.rounds.length === 0) {
-    nextStore.rounds = [createRound(1, nextStore.name || 'Prompt Olympics')];
-    nextStore.currentRoundIndex = 0;
-  }
-  const index = Number.isInteger(nextStore.currentRoundIndex) ? nextStore.currentRoundIndex : 0;
-  const safeIndex = Math.min(Math.max(index, 0), nextStore.rounds.length - 1);
-  nextStore.currentRoundIndex = safeIndex;
-  return nextStore.rounds[safeIndex];
+  return store.rounds[store.currentRoundIndex];
 }
-
 export function setCompetitionState(store, state) {
-  const normalized = normalizeState(state);
   const round = getCurrentRound(store);
-  round.state = normalized;
-  round.updatedAt = Date.now();
-  store.updatedAt = Date.now();
+  if (!TRANSITIONS[round.state]?.includes(state))
+    throw new DomainError("This round change is not allowed.", 409);
+  if (state === "RESULTS") {
+    if (
+      store.jobs.some(
+        (j) =>
+          j.roundId === round.id && !["ready", "failed"].includes(j.status),
+      )
+    )
+      throw new DomainError(
+        "Wait for generation and judging to finish before publishing.",
+        409,
+      );
+    if (round.submissions.some((s) => !s.deleted && !s.aiScore))
+      throw new DomainError(
+        "Resolve failed AI judging before publishing.",
+        409,
+      );
+    round.snapshot = buildLeaderboard(round);
+  }
+  round.state = state;
   return round;
 }
-
-export function createSubmission(store, { participantName, prompt, resultText, theme, participantSession }) {
-  const round = getCurrentRound(store);
-
-  const cleanedName = sanitizeText(participantName, '');
-  const cleanedPrompt = sanitizeText(prompt, '');
-  const cleanedResult = sanitizeText(resultText, '');
-
-  if (!cleanedName || !cleanedPrompt || !cleanedResult) {
-    throw new Error('Participant name, prompt, and generated result are required.');
-  }
-  if (cleanedName.length > 40 || cleanedPrompt.length > 700 || cleanedResult.length > 4000) {
-    throw new Error('Submission data is too long.');
-  }
-
+export function createSubmission(store, input) {
+  const round =
+    store.rounds.find((r) => r.id === input.roundId) || getCurrentRound(store);
+  if (round.state === "RESULTS")
+    throw new DomainError("Results have already been published.", 409);
   const submission = {
-    id: makeId('submission'),
-    participantName: cleanedName,
-    participantSession: sanitizeText(participantSession),
-    prompt: cleanedPrompt,
-    resultText: cleanedResult,
-    aiScore: scoreSubmission(cleanedPrompt, cleanedResult, theme),
+    id: input.id || randomUUID(),
+    ...input,
+    aiScore: input.aiScore ?? null,
+    judgingStatus: input.aiScore ? "ready" : "pending",
     createdAt: Date.now(),
-    updatedAt: Date.now(),
-    roundId: round.id
+    roundId: round.id,
   };
-
   round.submissions.push(submission);
-  round.updatedAt = Date.now();
-  store.updatedAt = Date.now();
   return submission;
 }
-
-export function createVote(store, { submissionId, voterSession, ratings, participantName }) {
+export function createVote(
+  store,
+  { submissionId, voterSession, rating, idempotencyKey },
+) {
   const round = getCurrentRound(store);
-
-  const cleanedSession = sanitizeText(voterSession, '');
-  if (!cleanedSession) {
-    throw new Error('A voter session is required.');
+  const retry = store.rounds
+    .flatMap((r) => r.votes)
+    .find(
+      (v) =>
+        v.voterSession === voterSession && v.idempotencyKey === idempotencyKey,
+    );
+  if (retry) {
+    if (retry.submissionId !== submissionId || retry.overall !== rating)
+      throw new DomainError(
+        "That request key was already used for a different vote.",
+        409,
+      );
+    return { id: retry.id, submissionId, rating, recorded: true };
   }
-
-  const submission = round.submissions.find((entry) => entry.id === submissionId);
-  if (!submission) {
-    throw new Error('Submission not found.');
-  }
-
-  const normalizedParticipant = sanitizeText(participantName, '') || cleanedSession;
-  const selfVoteName = submission.participantName.toLowerCase();
-  if (normalizedParticipant.toLowerCase() === selfVoteName ||
-      (submission.participantSession && submission.participantSession.toLowerCase() === cleanedSession.toLowerCase())) {
-    throw new Error('You may not vote for your own submission.');
-  }
-
-  const duplicateVote = round.votes.find(
-    (vote) => vote.submissionId === submissionId && vote.voterSession.toLowerCase() === cleanedSession.toLowerCase()
+  if (round.state !== "VOTING") throw new DomainError("Voting is closed.", 409);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5)
+    throw new DomainError("Choose a rating from 1 to 5.");
+  const story = round.submissions.find(
+    (s) => s.id === submissionId && !s.deleted,
   );
-  if (duplicateVote) {
-    throw new Error('Duplicate vote prevented for this voter and submission.');
-  }
-
-  const nextRatings = {
-    funniest: validateRating(ratings?.funniest),
-    mostCreative: validateRating(ratings?.mostCreative),
-    bestPrompt: validateRating(ratings?.bestPrompt),
-    overall: validateRating(ratings?.overall ?? ratings?.overallScore, true)
-  };
-
-  if (!nextRatings.overall || nextRatings.overall < 1 || nextRatings.overall > 5) {
-    throw new Error('Overall rating must be between 1 and 5.');
-  }
-
+  if (!story) throw new DomainError("Story not found.", 404);
+  if (story.participantSession === voterSession)
+    throw new DomainError("You cannot vote for your own story.", 403);
+  if (
+    round.votes.some(
+      (v) => v.submissionId === submissionId && v.voterSession === voterSession,
+    )
+  )
+    throw new DomainError("Your vote for this story is already recorded.", 409);
   const vote = {
-    id: makeId('vote'),
+    id: randomUUID(),
     submissionId,
-    voterSession: cleanedSession,
-    participantName: normalizedParticipant,
-    ratings: nextRatings,
-    overall: nextRatings.overall,
+    voterSession,
+    overall: rating,
+    idempotencyKey,
+    roundId: round.id,
     createdAt: Date.now(),
-    roundId: round.id
   };
-
   round.votes.push(vote);
-  round.updatedAt = Date.now();
-  store.updatedAt = Date.now();
-  return vote;
+  return { id: vote.id, submissionId, rating, recorded: true };
 }
-
-export function deleteSubmission(store, submissionId) {
-  const round = getCurrentRound(store);
-  const beforeCount = round.submissions.length;
-  round.submissions = round.submissions.filter((submission) => submission.id !== submissionId);
-  round.votes = round.votes.filter((vote) => vote.submissionId !== submissionId);
-  if (beforeCount !== round.submissions.length) {
-    round.updatedAt = Date.now();
-    store.updatedAt = Date.now();
-    return true;
-  }
-  return false;
+export function getAverageScore(round, id) {
+  const votes = round.votes.filter((v) => v.submissionId === id);
+  return votes.length
+    ? votes.reduce((sum, v) => sum + v.overall, 0) / votes.length
+    : null;
 }
-
-export function deleteAllSubmissions(store) {
-  const round = getCurrentRound(store);
-  round.submissions = [];
-  round.votes = [];
-  round.updatedAt = Date.now();
-  store.updatedAt = Date.now();
-  return round;
-}
-
-export function resetVotes(store) {
-  const round = getCurrentRound(store);
-  round.votes = [];
-  round.updatedAt = Date.now();
-  store.updatedAt = Date.now();
-  return round;
-}
-
-export function resetCompetition(store) {
-  const baseName = store.name || 'Prompt Olympics';
-  const cleared = createCompetition({ name: baseName, currentRoundIndex: 0, rounds: [createRound(1, baseName)] });
-  Object.assign(store, cleared);
-  return getCurrentRound(store);
-}
-
-export function startNewRound(store, title = 'Prompt Olympics') {
-  const currentRound = getCurrentRound(store);
-  const nextRound = createRound((currentRound.roundNumber || 1) + 1, title || currentRound.title || 'Prompt Olympics');
-  store.rounds.push(nextRound);
-  store.currentRoundIndex = store.rounds.length - 1;
-  store.updatedAt = Date.now();
-  return nextRound;
-}
-
-export function getAverageScore(round, submissionId) {
-  const votes = round.votes.filter((vote) => vote.submissionId === submissionId);
-  if (votes.length === 0) return 0;
-  const total = votes.reduce((sum, vote) => sum + Number(vote.overall ?? (vote.ratings && vote.ratings.overall) ?? 0), 0);
-  return Number((total / votes.length).toFixed(2));
-}
-
 export function buildLeaderboard(round) {
+  if (round.snapshot) return structuredClone(round.snapshot);
+  const totals = new Map();
+  for (const v of round.votes) {
+    const t = totals.get(v.submissionId) || [0, 0];
+    t[0] += v.overall;
+    t[1]++;
+    totals.set(v.submissionId, t);
+  }
   return round.submissions
-    .map((submission) => {
-      const votes = round.votes.filter((vote) => vote.submissionId === submission.id);
-      const averageScore = votes.length
-        ? Number((votes.reduce((sum, vote) => sum + Number(vote.overall ?? vote.ratings?.overall ?? 0), 0) / votes.length).toFixed(2))
-        : 0;
-      const aiScore = fivePointAiScore(submission);
-      // Both scores are out of five. Vote count never changes their equal weight.
-      const finalScore = Number((votes.length ? (aiScore.overall + averageScore) / 2 : aiScore.overall).toFixed(2));
-
+    .filter((s) => !s.deleted)
+    .map((s) => {
+      const [sum, count] = totals.get(s.id) || [0, 0];
+      const ai = s.aiScore?.overall ?? null;
+      const average = count ? sum / count : null;
       return {
-        submissionId: submission.id,
-        participantName: submission.participantName,
-        prompt: submission.prompt,
-        resultText: submission.resultText,
-        title: submission.title ?? '',
-        theme: submission.theme ?? '',
-        aiScore,
-        averageScore,
-        voteCount: votes.length,
-        finalScore,
-        scoreMax: 5,
-        createdAt: submission.createdAt
+        submissionId: s.id,
+        participantName: s.participantName,
+        title: s.title || "Untitled story",
+        aiScore: ai,
+        averageScore: average,
+        voteCount: count,
+        finalScore: ai === null || average === null ? null : (ai + average) / 2,
+        eligible: ai !== null && count >= (round.minVotes ?? 5),
+        judgingStatus: s.judgingStatus || (ai === null ? "pending" : "ready"),
       };
     })
-    .sort((a, b) => {
-      // Higher combined score wins; then vote count, then alphabetical name.
-      if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
-      if (b.voteCount !== a.voteCount) return b.voteCount - a.voteCount;
-      return a.participantName.localeCompare(b.participantName);
-    });
+    .sort(
+      (a, b) =>
+        Number(b.eligible) - Number(a.eligible) ||
+        (b.finalScore ?? -1) - (a.finalScore ?? -1) ||
+        (b.averageScore ?? -1) - (a.averageScore ?? -1) ||
+        (b.aiScore ?? -1) - (a.aiScore ?? -1) ||
+        b.voteCount - a.voteCount ||
+        (a.submissionId < b.submissionId
+          ? -1
+          : a.submissionId > b.submissionId
+            ? 1
+            : 0),
+    );
 }
-
-export function readCompetitionStore() {
-  if (!fs.existsSync(STORAGE_PATH)) {
-    const store = createCompetition();
-    persistCompetitionStore(store);
-    return store;
-  }
-  // Do not overwrite a damaged store with an empty competition.
-  const parsed = JSON.parse(fs.readFileSync(STORAGE_PATH, 'utf8'));
-  if (!Array.isArray(parsed?.rounds) || !parsed.rounds.length) throw new Error('Invalid competition data.');
-  return createCompetition(parsed);
-}
-
-export function persistCompetitionStore(store) {
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
-  const temporaryPath = `${STORAGE_PATH}.tmp`;
-  fs.writeFileSync(temporaryPath, JSON.stringify(store, null, 2));
-  fs.renameSync(temporaryPath, STORAGE_PATH);
-  return store;
+export function startNewRound(store, title) {
+  if (getCurrentRound(store).state !== "RESULTS")
+    throw new DomainError(
+      "Publish the current results before starting a new round.",
+      409,
+    );
+  const next = createRound(store.rounds.length + 1, title || "Prompt Olympics");
+  store.rounds.push(next);
+  store.currentRoundIndex++;
+  return next;
 }

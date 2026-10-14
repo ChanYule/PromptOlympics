@@ -1,293 +1,552 @@
-import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
-import { GoogleGenAI } from "@google/genai";
-import { DEFAULT_MODEL, normalizeModelName } from "./geminiConfig.js";
+﻿import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { randomUUID, createHash } from "node:crypto";
 import {
-  buildLeaderboard,
-  createSubmission,
-  createVote,
-  deleteAllSubmissions,
-  deleteSubmission,
-  getAverageScore,
-  getCurrentRound,
-  resetCompetition,
-  resetVotes,
-  startNewRound
-} from "./competitionStore.js";
+  createCompetitionRepository,
+  StorageError,
+} from "./competitionRepository.js";
+import { DomainError, TRANSITIONS } from "./competitionStore.js";
+import { createAiService, startWorker } from "./aiService.js";
+import { createSecurity, digest } from "./security.js";
 
-import { createCompetitionRepository, StorageError } from "./competitionRepository.js";
-
-const repository = createCompetitionRepository();
-const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res)).catch(next);
-const app = express();
-const port = process.env.PORT || 10000;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const distPath = path.join(__dirname, "dist");
-const adminPassword = process.env.ADMIN_PASSWORD || process.env.PROMPT_OLYMPICS_ADMIN_PASSWORD || "prompt-olympics-admin";
-
-const getModel = () => {
-  const configured = process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
-  return normalizeModelName(configured);
-};
-
-function geminiErrorDetails(error) {
-  const status = typeof error === "object" && error && "status" in error && typeof error.status === "number"
-    ? error.status
-    : undefined;
-  const name = error instanceof Error ? error.name : "UnknownError";
-  const message = error instanceof Error ? error.message : "Unknown Gemini error";
-  return { status, name, message };
+const root = path.dirname(fileURLToPath(import.meta.url));
+const route = (handler) => (req, res, next) =>
+  Promise.resolve(handler(req, res)).catch(next);
+function text(value, max, label) {
+  if (typeof value !== "string" || !value.trim() || value.trim().length > max)
+    throw new DomainError(`Enter ${label} (${max} characters or fewer).`);
+  return value.trim();
 }
-
-function errorResponse(error) {
-  const { status, name, message } = geminiErrorDetails(error);
-  const messageLower = message.toLowerCase();
-  if (name === "AbortError") return { status: 504, error: "Gemini timed out. Please try again." };
-  if (status === 401 || /api key.*(invalid|not valid)|invalid api key/.test(messageLower)) {
-    return { status: 502, error: "Gemini rejected the API key." };
-  }
-  if (status === 403) return { status: 502, error: "Gemini denied permission for this API key." };
-  if (status === 404) return { status: 502, error: `Gemini model '${getModel()}' was not found or is unavailable.` };
-  if (status === 429) return { status: 429, error: "Gemini is rate-limited. Please try again shortly." };
-  if (status && status >= 500) return { status: 502, error: "Gemini is temporarily unavailable. Please try again." };
-  return { status: 502, error: "Gemini could not generate the story. Please try again." };
+function operation(req) {
+  return text(req.get("Idempotency-Key"), 100, "a request key");
 }
-
-async function generateGeminiText(contents, config = {}) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    const error = new Error("GEMINI_API_KEY is missing");
-    error.code = "MISSING_API_KEY";
-    throw error;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 40_000);
-  try {
-    const response = await new GoogleGenAI({ apiKey }).models.generateContent({
-      model: getModel(),
-      contents,
-      config: { ...config, abortSignal: controller.signal }
-    });
-    console.log("Gemini response received:", {
-      status: response.sdkHttpResponse?.responseInternal?.status ?? "unavailable",
-      model: response.modelVersion || getModel()
-    });
-    return response.text?.trim() || "";
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function parseAdminPassword(req) {
-  const header = req.headers.authorization || "";
-  if (header.startsWith("Bearer ")) {
-    return header.slice(7).trim();
-  }
-  return typeof req.headers["x-admin-password"] === "string" ? req.headers["x-admin-password"] : "";
-}
-
-function requireAdmin(req, res, next) {
-  const supplied = parseAdminPassword(req);
-  if (!supplied || supplied !== adminPassword) {
-    return res.status(401).json({ error: "Admin authentication required." });
-  }
-  return next();
-}
-
-function serializeRound(round) {
+function safeJob(job) {
   return {
-    ...round,
-    leaderboard: buildLeaderboard(round),
-    averageScores: Object.fromEntries(round.submissions.map((item) => [item.id, getAverageScore(round, item.id)]))
+    id: job.id,
+    status: job.status,
+    submissionId: job.submissionId,
+    error: job.error,
+    submission: job.submission
+      ? {
+          id: job.submission.id,
+          title: job.submission.title,
+          prompt: job.submission.prompt,
+          resultText: job.submission.resultText,
+          participantName: job.submission.participantName,
+          judgingStatus: job.submission.judgingStatus,
+          aiScore: job.submission.aiScore,
+        }
+      : null,
   };
 }
-
-app.use(express.json({ limit: "50mb" }));
-
-app.get("/api/health", asyncRoute(async (req, res) => {
-  await repository.read();
-  res.json({ ok: true, storage: repository.kind, storageConnected: true,
-    geminiConfigured: Boolean(process.env.GEMINI_API_KEY), model: getModel() });
-}));
-
-app.get("/api/competition", asyncRoute(async (req, res) => {
-  const store = await repository.read();
-  const round = getCurrentRound(store);
-  res.json({ ok: true, state: round.state, competition: { ...store, currentRound: serializeRound(round) } });
-}));
-
-app.post("/api/submissions", asyncRoute(async (req, res) => {
-  try {
-    const participantName = typeof req.body?.participantName === "string" ? req.body.participantName.trim() : "";
-    const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
-    const resultText = typeof req.body?.resultText === "string" ? req.body.resultText.trim() : "";
-    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
-    const theme = typeof req.body?.theme === "string" ? req.body.theme.trim() : "";
-    const result = await repository.update(store => {
-      const submission = createSubmission(store, { participantName, prompt, resultText, theme, participantSession: req.body?.participantSession });
-      if (title) submission.title = title;
-      if (theme) submission.theme = theme;
-      return { ok: true, submission, round: serializeRound(getCurrentRound(store)) };
+export function createApp({
+  env = process.env,
+  repository = createCompetitionRepository({ env }),
+  ai = createAiService(env),
+  worker = true,
+} = {}) {
+  const app = express(),
+    security = createSecurity(env);
+  const metrics = {
+    requests: 0,
+    votes: 0,
+    voteFailures: 0,
+    aiSuccess: 0,
+    aiFailure: 0,
+    databaseFailure: 0,
+    rateLimited: 0,
+    unauthorized: 0,
+    aiTotalMs: 0,
+    aiAverageMs: 0,
+    lastLeaderboardRefresh: null,
+  };
+  app.disable("x-powered-by");
+  app.set("trust proxy", env.NODE_ENV === "production" ? 1 : false);
+  app.use((req, res, next) => {
+    metrics.requests++;
+    res.set({
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "same-origin",
+      "X-Frame-Options": "DENY",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+      "Content-Security-Policy":
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     });
-    res.status(201).json(result);
-  } catch (error) {
-    if (error instanceof StorageError) throw error;
-    res.status(400).json({ error: error instanceof Error ? error.message : "Unable to create submission." });
-  }
-}));
-
-app.post("/api/votes", asyncRoute(async (req, res) => {
-  try {
-    const result = await repository.update(store => {
-      const vote = createVote(store, {
-        submissionId: typeof req.body?.submissionId === "string" ? req.body.submissionId : "",
-        voterSession: typeof req.body?.voterSession === "string" ? req.body.voterSession.trim() : "",
-        participantName: typeof req.body?.participantName === "string" ? req.body.participantName.trim() : "",
-        ratings: req.body?.ratings && typeof req.body.ratings === "object" ? req.body.ratings : {}
+    if (env.NODE_ENV === "production")
+      res.set(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains",
+      );
+    if (req.path.startsWith("/api/")) res.set("Cache-Control", "no-store");
+    next();
+  });
+  app.use(express.json({ limit: "8kb" }));
+  const call = (action, p) => repository.call(action, p);
+  const limit = async (key, max, seconds) =>
+    call("limit", { key, max, seconds });
+  app.get(
+    "/api/session",
+    route(async (req, res) => {
+      let session = security.read(req);
+      if (!session) {
+        const token = security.issue("voter", 86400 * 180);
+        security.cookie(res, "voter", token, 86400 * 180);
+        session = security.read({ headers: { cookie: `po_session=${token}` } });
+      }
+      res.json({ csrf: security.csrf(session.id) });
+    }),
+  );
+  app.use("/api", (req, res, next) => {
+    if (["/health", "/ready"].includes(req.path)) return next();
+    const session = security.read(req);
+    if (!session)
+      return res
+        .status(401)
+        .json({ error: "Please refresh to restore your event session." });
+    req.sessionId = session.id;
+    if (
+      !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
+      !req.path.startsWith("/admin/") &&
+      !security.validCsrf(req, session.id)
+    )
+      return res
+        .status(403)
+        .json({ error: "Please refresh before trying again." });
+    next();
+  });
+  app.get("/api/health", (req, res) =>
+    res.json({
+      ok: true,
+      storage: repository.kind,
+      geminiConfigured: ai.configured,
+      model: ai.model,
+    }),
+  );
+  app.get(
+    "/api/ready",
+    route(async (req, res) => {
+      await call("health");
+      res.json({
+        ok: true,
+        storage: repository.kind,
+        storageConnected: true,
+        geminiConfigured: ai.configured,
       });
-      return { ok: true, vote, round: serializeRound(getCurrentRound(store)) };
-    });
-    res.status(201).json(result);
-  } catch (error) {
-    if (error instanceof StorageError) throw error;
-    res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save vote." });
+    }),
+  );
+  app.get(
+    "/api/competition",
+    route(async (req, res) =>
+      res.json(await call("competition", { sessionId: req.sessionId })),
+    ),
+  );
+  app.get(
+    "/api/stories",
+    route(async (req, res) => {
+      await limit("browse:" + req.sessionId, 120, 60);
+      res.json(
+        await call("stories", {
+          sessionId: req.sessionId,
+          offset: Math.max(0, parseInt(req.query.offset) || 0),
+        }),
+      );
+    }),
+  );
+  let cache = null,
+    inflight = null;
+  async function leaderboard() {
+    if (cache && cache.expires > Date.now()) return cache;
+    if (!inflight)
+      inflight = call("leaderboard")
+        .then((data) => {
+          const body = JSON.stringify(data),
+            etag = '"' + createHash("sha256").update(body).digest("hex") + '"';
+          cache = { data, etag, expires: Date.now() + 3000 };
+          metrics.lastLeaderboardRefresh = new Date().toISOString();
+          return cache;
+        })
+        .finally(() => {
+          inflight = null;
+        });
+    return inflight;
   }
-}));
-
-app.post("/api/test-gemini", async (req, res) => {
-  const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
-  console.log("Gemini test request:", {
-    geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
-    model: getModel(),
-    promptLength: prompt.length
+  app.get(
+    "/api/leaderboard",
+    route(async (req, res) => {
+      const current = req.query.roundId
+        ? {
+            data: await call("leaderboard", {
+              roundId: text(req.query.roundId, 120, "a round identifier"),
+            }),
+          }
+        : await leaderboard();
+      res.set("Cache-Control", "private, max-age=0, must-revalidate");
+      if (current.etag) res.set("ETag", current.etag);
+      if (current.etag && req.get("If-None-Match") === current.etag)
+        return res.status(304).end();
+      res.json(current.data);
+    }),
+  );
+  app.post(
+    "/api/generate-story",
+    route(async (req, res) => {
+      if (!ai.configured)
+        throw new DomainError(
+          "Story creation is temporarily unavailable. Please contact an organiser.",
+          503,
+        );
+      await limit("generate:" + req.sessionId, 10, 60);
+      if (req.body.resultText || req.body.aiScore)
+        throw new DomainError(
+          "Official stories and scores are generated by the server.",
+        );
+      if (
+        req.body.language !== undefined &&
+        !["en", "zh"].includes(req.body.language)
+      )
+        throw new DomainError("Choose English or Chinese for your story.");
+      const input = {
+        participantName: text(req.body.participantName, 40, "your name"),
+        prompt: text(req.body.prompt, 700, "a story idea"),
+        theme:
+          typeof req.body.theme === "string"
+            ? text(req.body.theme, 300, "a challenge")
+            : "Creative Story",
+        regenerate: req.body.regenerate === true,
+        ...(req.body.language === undefined
+          ? {}
+          : { language: req.body.language }),
+      };
+      const job = await call("enqueue", {
+        sessionId: req.sessionId,
+        idempotencyKey: operation(req),
+        id: randomUUID(),
+        input,
+        maxQueue: Math.max(1, Number(env.MAX_QUEUE) || 150),
+        maxPerParticipant: Math.max(
+          1,
+          Number(env.MAX_STORIES_PER_PARTICIPANT) || 5,
+        ),
+        dailyBudget: Math.max(1, Number(env.DAILY_GENERATION_BUDGET) || 1000),
+      });
+      res.status(202).json(safeJob(job));
+    }),
+  );
+  app.get(
+    "/api/jobs/:jobId",
+    route(async (req, res) => {
+      await limit("job:" + req.sessionId, 120, 60);
+      res.json(
+        safeJob(
+          await call("job", {
+            jobId: req.params.jobId,
+            sessionId: req.sessionId,
+          }),
+        ),
+      );
+    }),
+  );
+  app.get(
+    "/api/operations/:key",
+    route(async (req, res) =>
+      res.json(
+        safeJob(
+          await call("job", {
+            idempotencyKey: req.params.key,
+            sessionId: req.sessionId,
+          }),
+        ),
+      ),
+    ),
+  );
+  app.post(
+    "/api/votes",
+    route(async (req, res) => {
+      const started = Date.now();
+      try {
+        await limit("vote:" + req.sessionId, 60, 60);
+        if (
+          !Number.isInteger(req.body.rating) ||
+          req.body.rating < 1 ||
+          req.body.rating > 5
+        )
+          throw new DomainError("Choose a rating from 1 to 5.");
+        const result = await call("vote", {
+          sessionId: req.sessionId,
+          submissionId: text(req.body.submissionId, 120, "a story"),
+          rating: req.body.rating,
+          idempotencyKey: operation(req),
+          id: randomUUID(),
+        });
+        cache = null;
+        metrics.votes++;
+        res.status(201).json(result);
+      } catch (e) {
+        metrics.voteFailures++;
+        throw e;
+      } finally {
+        console.log(
+          JSON.stringify({ event: "vote", durationMs: Date.now() - started }),
+        );
+      }
+    }),
+  );
+  app.post(
+    "/api/voter-code",
+    route(async (req, res) => {
+      await limit("code:" + req.sessionId, 10, 300);
+      res.json(
+        await call("redeem", {
+          sessionId: req.sessionId,
+          codeHash: digest(
+            text(req.body.code, 100, "your event code").toUpperCase(),
+          ),
+        }),
+      );
+    }),
+  );
+  app.post(
+    "/api/admin/login",
+    route(async (req, res) => {
+      if (!security.validCsrf(req, req.sessionId))
+        throw new DomainError("Refresh before signing in.", 403);
+      await limit("login:" + digest(req.ip), 10, 900);
+      if (
+        typeof req.body.password !== "string" ||
+        !security.validPassword(req.body.password)
+      )
+        throw new DomainError("The organiser password is incorrect.", 401);
+      const token = security.issue("admin", 3600),
+        claims = security.read(
+          { headers: { cookie: `po_admin=${token}` } },
+          "admin",
+        );
+      await call("admin-session-create", {
+        id: claims.id,
+        expires: claims.expires,
+      });
+      security.cookie(res, "admin", token, 3600);
+      res.json({ csrf: security.csrf(claims.id, "admin") });
+    }),
+  );
+  app.use("/api/admin", (req, res, next) =>
+    Promise.resolve(
+      (async () => {
+        const session = security.read(req, "admin");
+        if (
+          !session ||
+          !(await call("admin-session-check", { id: session.id })).valid
+        )
+          throw new DomainError("Organiser sign-in is required.", 401);
+        req.adminId = session.id;
+        req.adminCsrf = security.csrf(session.id, "admin");
+        if (
+          req.method !== "GET" &&
+          !security.validCsrf(req, session.id, "admin")
+        )
+          throw new DomainError(
+            "Refresh the organiser page before trying again.",
+            403,
+          );
+        next();
+      })(),
+    ).catch(next),
+  );
+  app.get(
+    "/api/admin/session",
+    route(async (req, res) => res.json({ csrf: req.adminCsrf })),
+  );
+  app.post(
+    "/api/admin/logout",
+    route(async (req, res) => {
+      await call("admin-session-delete", { id: req.adminId });
+      security.cookie(res, "admin", "", 0);
+      res.json({ ok: true });
+    }),
+  );
+  app.get(
+    "/api/admin/competition",
+    route(async (req, res) => {
+      const data = await call("admin"),
+        round = await call("competition", { sessionId: req.sessionId });
+      res.json({ data, round, metrics, transitions: TRANSITIONS[round.state] });
+    }),
+  );
+  app.get(
+    "/api/admin/export",
+    route(async (req, res) => {
+      res
+        .attachment("prompt-olympics-backup.json")
+        .json(await call("export", { actor: req.adminId }));
+    }),
+  );
+  app.get(
+    "/api/admin/results",
+    route(async (req, res) => {
+      const { entries } = await call("leaderboard");
+      const chinese = req.query.language === "zh";
+      const quote = (v) =>
+        '"' +
+        String(v ?? "")
+          .replace(/^(\s*[=+@-])/, "'$1")
+          .replaceAll('"', '""') +
+        '"';
+      const rows = [
+        chinese
+          ? [
+              "排名",
+              "姓名",
+              "故事标题",
+              "AI 评分 / 5",
+              "公众评分 / 5",
+              "总分 / 5",
+              "票数",
+              "获奖资格",
+            ]
+          : [
+              "Rank",
+              "Name",
+              "Title",
+              "AI / 5",
+              "Public / 5",
+              "Combined / 5",
+              "Votes",
+              "Eligible",
+            ],
+        ...entries.map((e, i) => [
+          i + 1,
+          e.participantName,
+          e.title,
+          e.aiScore,
+          e.averageScore,
+          e.finalScore,
+          e.voteCount,
+          chinese ? (e.eligible ? "具备资格" : "暂未具备资格") : e.eligible,
+        ]),
+      ];
+      res
+        .attachment("prompt-olympics-results.csv")
+        .type("text/csv")
+        .send(
+          (chinese ? "\uFEFF" : "") +
+            rows.map((r) => r.map(quote).join(",")).join("\r\n"),
+        );
+    }),
+  );
+  app.post(
+    "/api/admin/:action",
+    route(async (req, res) => {
+      const action = req.params.action,
+        p = { actor: req.adminId };
+      if (
+        [
+          "transition",
+          "new-round",
+          "delete",
+          "settings",
+          "judge-historical",
+        ].includes(action) &&
+        req.body.confirm !== true
+      )
+        throw new DomainError("Confirm this organiser action first.");
+      if (action === "transition")
+        p.state = text(req.body.state, 30, "a round state");
+      else if (action === "new-round") {
+        p.id = randomUUID();
+        p.title = text(
+          req.body.title || "Prompt Olympics",
+          100,
+          "a round title",
+        );
+      } else if (["delete", "retry-judge", "judge-historical"].includes(action))
+        p.submissionId = text(req.body.submissionId, 120, "a story");
+      else if (action === "settings") {
+        if (
+          !Number.isInteger(req.body.minVotes) ||
+          req.body.minVotes < 1 ||
+          req.body.minVotes > 1000 ||
+          typeof req.body.strictCodes !== "boolean"
+        )
+          throw new DomainError("Enter a minimum vote count from 1 to 1000.");
+        p.minVotes = req.body.minVotes;
+        p.strictCodes = req.body.strictCodes;
+      } else if (action === "codes") {
+        const count = req.body.count;
+        if (!Number.isInteger(count) || count < 1 || count > 500)
+          throw new DomainError("Choose between 1 and 500 codes.");
+        const codes = Array.from({ length: count }, () =>
+          randomUUID().replaceAll("-", "").slice(0, 16).toUpperCase(),
+        );
+        p.hashes = codes.map(digest);
+        await call("codes", p);
+        return res.json({ codes });
+      } else throw new DomainError("Unknown organiser action.", 404);
+      const result = await call(action, p);
+      cache = null;
+      res.json(result);
+    }),
+  );
+  app.use("/api", (req, res) =>
+    res.status(404).json({ error: "API endpoint not found." }),
+  );
+  app.use(
+    express.static(path.join(root, "dist"), { maxAge: "1h", index: false }),
+  );
+  app.get("*", (req, res) =>
+    res.sendFile(path.join(root, "dist", "index.html")),
+  );
+  app.use((error, req, res, next) => {
+    if (error instanceof StorageError) metrics.databaseFailure++;
+    const status = error.status || 500;
+    if (status === 429) metrics.rateLimited++;
+    if (status === 401 || status === 403) metrics.unauthorized++;
+    res.status(status).json({
+      error:
+        error instanceof DomainError || error instanceof StorageError
+          ? error.message
+          : status === 413
+            ? "That request is too large."
+            : status === 400
+              ? "The request could not be read."
+              : "Something went wrong. Please try again.",
+    });
   });
-  if (!prompt) return res.status(400).json({ error: "A prompt is required." });
-  if (prompt.length > 700) return res.status(400).json({ error: "The prompt is too long." });
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(503).json({ error: "Gemini is not configured on the server." });
-  }
-
-  try {
-    const text = await generateGeminiText(prompt, { maxOutputTokens: 100 });
-    if (!text) return res.status(502).json({ error: "Gemini returned an empty response." });
-    return res.json({ text });
-  } catch (error) {
-    const details = geminiErrorDetails(error);
-    console.error("Gemini test failed:", details);
-    if (error && typeof error === "object" && error.code === "MISSING_API_KEY") {
-      return res.status(503).json({ error: "Gemini is not configured on the server." });
-    }
-    const result = errorResponse(error);
-    return res.status(result.status).json({ error: result.error });
-  }
-});
-
-app.post("/api/generate-story", async (req, res) => {
-  const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
-  const theme = typeof req.body?.theme === "string" ? req.body.theme.trim() : "";
-  const regenerate = req.body?.regenerate === true;
-  const previousStory = typeof req.body?.previousStory === "string" ? req.body.previousStory.trim() : "";
-  console.log("Gemini story request:", {
-    geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
-    model: getModel(),
-    promptLength: prompt.length,
-    themeLength: theme.length,
-    regenerate
-  });
-
-  if (!prompt || !theme) {
-    return res.status(400).json({ error: "A prompt and challenge are required." });
-  }
-  if (prompt.length > 700 || theme.length > 300 || previousStory.length > 3_000) {
-    return res.status(400).json({ error: "The prompt or challenge is too long." });
-  }
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(503).json({
-      error: "Gemini is not configured on the server."
-    });
-  }
-
-  try {
-    const storyPrompt = `Make this idea into a funny story in 100 words or fewer. Also write a short, punchy title (5 words or fewer) that is directly relevant to what actually happens in the story. Respond in exactly this format with nothing else:\nTitle: <title>\nStory: <story>\n\nIdea: ${prompt}`;
-
-    const raw = await generateGeminiText(storyPrompt, {
-      systemInstruction: "Make the story funny and keep it to 100 words or fewer. Always answer with a 'Title:' line followed by a 'Story:' line, in that order, with no extra commentary. The title must be short, punchy, and specific to the story's events - never generic.",
-      temperature: 1,
-      thinkingConfig: { thinkingLevel: "low" },
-      maxOutputTokens: 5_000
-    });
-    if (!raw) {
-      console.error("Gemini returned no story text.");
-      return res.status(502).json({ error: "Gemini returned an empty response." });
-    }
-
-    const titleMatch = raw.match(/title:\s*(.+)/i);
-    const storyMatch = raw.match(/story:\s*([\s\S]+)/i);
-    const title = titleMatch ? titleMatch[1].trim().replace(/^["'*]+|["'*]+$/g, "") : "";
-    const text = storyMatch ? storyMatch[1].trim() : raw.trim();
-    if (!text) {
-      console.error("Gemini returned no story text.");
-      return res.status(502).json({ error: "Gemini returned an empty response." });
-    }
-
-    return res.json({ text, title });
-  } catch (error) {
-    const details = geminiErrorDetails(error);
-    console.error("Gemini story request failed:", details);
-    const result = errorResponse(error);
-    return res.status(result.status).json({ error: result.error });
-  }
-});
-
-app.get("/api/admin/competition", requireAdmin, asyncRoute(async (req, res) => {
-  const store = await repository.read();
-  res.json({ ok: true, adminPasswordConfigured: Boolean(adminPassword), competition: { ...store, currentRound: serializeRound(getCurrentRound(store)) } });
-}));
-
-// Return a downloadable backup before switching storage providers.
-app.get("/api/admin/export", requireAdmin, asyncRoute(async (req, res) => {
-  res.attachment("prompt-olympics-backup.json").json(await repository.read());
-}));
-
-const adminChanges = {
-  "reset-votes": store => { resetVotes(store); return {}; },
-  "delete-submission/:submissionId": (store, req) => ({ deleted: deleteSubmission(store, req.params.submissionId) }),
-  "delete-all-submissions": store => { deleteAllSubmissions(store); return {}; },
-  "reset-competition": store => { resetCompetition(store); return { reset: true }; },
-  "start-new-round": (store, req) => { startNewRound(store, req.body?.title || "Prompt Olympics"); return {}; }
-};
-for (const [action, change] of Object.entries(adminChanges)) {
-  app.post(`/api/admin/${action}`, requireAdmin, asyncRoute(async (req, res) => {
-    const result = await repository.update(store => {
-      const extra = change(store, req);
-      return { ok: true, ...extra, currentRound: serializeRound(getCurrentRound(store)) };
-    });
-    res.json(result);
-  }));
+  const runner =
+    worker && ai.configured
+      ? startWorker(repository, ai, {
+          concurrency: Math.min(
+            20,
+            Math.max(1, Number(env.AI_CONCURRENCY) || 4),
+          ),
+          onMetric: (name, durationMs) => {
+            metrics[name] = (metrics[name] || 0) + 1;
+            if (name === "aiSuccess" || name === "aiFailure") {
+              metrics.aiTotalMs += durationMs;
+              metrics.aiAverageMs =
+                metrics.aiTotalMs / (metrics.aiSuccess + metrics.aiFailure);
+              console.log(JSON.stringify({ event: name, durationMs }));
+            }
+          },
+        })
+      : null;
+  return { app, repository, stop: () => runner?.stop(), metrics };
 }
-
-app.use((error, req, res, next) => {
-  if (error instanceof StorageError) return res.status(503).json({ ok: false, storage: repository.kind, storageConnected: false, error: error.message });
-  if (error instanceof SyntaxError && error.status === 400) return res.status(400).json({ error: "The request could not be read." });
-  console.error("Request failed:", error.name);
-  return res.status(500).json({ error: "Something went wrong. Please try again." });
-});
-
-app.use(express.static(distPath));
-
-app.get("/admin", (req, res) => {
-  res.sendFile(path.join(distPath, "index.html"));
-});
-
-app.get("/*", (req, res) => {
-  res.sendFile(path.join(distPath, "index.html"));
-});
-
-app.listen(port, "0.0.0.0", () => {
-  console.log(`Server running on port ${port}`);
-  console.log("Gemini configuration:", { geminiConfigured: Boolean(process.env.GEMINI_API_KEY), model: getModel() });
-});
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const service = createApp(),
+    server = service.app.listen(process.env.PORT || 10000, "0.0.0.0", () =>
+      console.log(
+        JSON.stringify({ event: "started", storage: service.repository.kind }),
+      ),
+    );
+  function shutdown() {
+    service.stop();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 10000).unref();
+  }
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}

@@ -1,185 +1,22 @@
-# Prompt Olympics - Troubleshooting Guide
+# Troubleshooting
 
-## The Issue: "Your story did not load"
+| What you see                            | What to do                                                                                                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server refuses to start                 | Check required Supabase variables, private organiser password and session secret. Production cannot use local storage.                                                                      |
+| Database readiness returns 503          | Check project availability, server secret, migrations 001/002 and grants in Supabase privately. No local fallback occurs.                                                                   |
+| Story creation is disabled              | Check round phase. Only `SUBMISSIONS_OPEN` accepts new jobs.                                                                                                                                |
+| Story request is awaiting confirmation  | Use **Check and retry the same request**. Input and operation key remain in the browser. Do not create a new version until the old request is reconciled.                                   |
+| Story stays queued                      | Check shared concurrency, provider quota, outstanding jobs and worker health. A restart may require a two-minute lease expiry.                                                              |
+| Story is saved but AI judging failed    | Organiser reviews **Failed requests** and uses **Retry AI judging**. No fallback score is supplied.                                                                                         |
+| Historical story has no AI score        | Migration preserves it pending. An organiser can explicitly judge an unscored historical story in the current round, or remove it from award consideration; completed scores are preserved. |
+| Invalid/too-long/unsafe Gemini response | Request fails with input preserved. Review idea, model access and provider behaviour. No silent truncation or generated placeholder is submitted.                                           |
+| Vote confirmation was lost              | Use **Check and confirm my vote**. Exact retries return the committed vote; they cannot create another record.                                                                              |
+| Duplicate/self/closed vote rejection    | The vote was not newly accepted. Read another story or ask the organiser about phase/code. Changing the nickname does not change ownership.                                                 |
+| Event code is invalid/already used      | Ask the organiser to check distribution. One code belongs to one verified session in that round. Clearing cookies may lose access to the claimed code.                                      |
+| Leaderboard refresh fails               | Last confirmed results stay visible. Use **Refresh now** after the connection returns. Hidden tabs pause polling; returning to the tab refreshes it.                                        |
+| Publish results is blocked              | Wait for queued work and resolve missing/failed AI scores on visible entries. A removed story is excluded but its original record/votes remain in backups.                                  |
+| Organiser session expired               | Sign in again. Never paste the password into chat or use a displayed nickname as the password.                                                                                              |
+| Fullscreen unavailable                  | Presentation layout still works. Test the actual projector browser before the event.                                                                                                        |
+| Import refuses an occupied database     | Do not overwrite it. Inspect the target and use a dedicated project or reviewed recovery procedure. Exact reruns of the same completed import are safe.                                     |
 
-This error appears when the app cannot generate a story. There are two possible causes:
-
-### 1. **Gemini API is not configured** (Most Common)
-The server doesn't have a valid `GEMINI_API_KEY` environment variable set.
-
-**Solution**: See [GEMINI_SETUP.md](./GEMINI_SETUP.md)
-
-### 2. **Gemini API is rate-limited or down**
-Your API account has exceeded its usage quota or Google's servers are temporarily unavailable.
-
-**Solution**: Wait a few hours and try again, or upgrade your Google Cloud account.
-
----
-
-## Quick Start: Local Setup with Gemini
-
-### Prerequisites
-- Node.js 18 or later
-- A Google Gemini API key (free at [Google AI Studio](https://aistudio.google.com/app/apikey))
-
-### Step 1: Install Dependencies
-```bash
-npm install
-```
-
-### Step 2: Build the App
-```bash
-npm run build
-```
-
-### Step 3: Run with Your API Key
-Replace `YOUR_API_KEY_HERE` with your actual key:
-
-**Windows PowerShell:**
-```powershell
-$env:GEMINI_API_KEY="YOUR_API_KEY_HERE"
-npm start
-```
-
-**Linux/Mac:**
-```bash
-export GEMINI_API_KEY="YOUR_API_KEY_HERE"
-npm start
-```
-
-### Step 4: Open in Browser
-Visit `http://localhost:10000` and test story generation.
-
----
-
-## Alternative: Local-Only Mode (No Gemini)
-
-If you don't have a Gemini API key, the app includes a complete local story generation system (see `src/storyGeneration.ts`).
-
-**To enable this, you would need to**:
-1. Port `storyGeneration.ts` functions to the server (convert to JavaScript/TypeScript in `server.js`)
-2. Modify `/api/generate-story` to use `generateStory()` instead of calling Gemini
-3. Rebuild and restart
-
-This is a development project task - if you want this feature, the code structure already supports it!
-
----
-
-## Testing Your Setup
-
-### Test 1: Check Server Health
-```powershell
-Invoke-WebRequest -Uri "http://localhost:10000/api/health" -UseBasicParsing | Select-Object -ExpandProperty Content
-```
-
-Expected output (with API key):
-```json
-{"ok":true,"geminiConfigured":true,"model":"gemini-pro"}
-```
-
-Expected output (without API key):
-```json
-{"ok":true,"geminiConfigured":false,"model":"gemini-pro"}
-```
-
-### Test 2: Test Gemini Connection
-```powershell
-$body = @{ prompt = "Say hello" } | ConvertTo-Json
-Invoke-WebRequest -Uri "http://localhost:10000/api/test-gemini" -Method POST -ContentType "application/json" -Body $body -UseBasicParsing | Select-Object -ExpandProperty Content
-```
-
-Expected: A JSON response with a `text` field containing Gemini's response.
-
-### Test 3: Test Story Generation
-```powershell
-$body = @{
-  prompt = "A robot tries to cook dinner"
-  theme = "Robot at Dinner"
-} | ConvertTo-Json
-Invoke-WebRequest -Uri "http://localhost:10000/api/generate-story" -Method POST -ContentType "application/json" -Body $body -UseBasicParsing | Select-Object -ExpandProperty Content
-```
-
-Expected: A JSON response with a `text` field containing the generated story.
-
----
-
-## Common Errors & Solutions
-
-### ❌ "Gemini is not configured on the server"
-- **Cause**: `GEMINI_API_KEY` environment variable not set
-- **Fix**: Set it before running `npm start` (see Step 3 above)
-
-### ❌ "Gemini rejected the API key"
-- **Cause**: Invalid or expired API key
-- **Fix**: Create a new key at [Google AI Studio](https://aistudio.google.com/app/apikey)
-
-### ❌ "Gemini model 'X' was not found"
-- **Cause**: The model is not available or your key lacks access
-- **Fix**: Try a different model or verify your API key works at [Google AI Studio](https://aistudio.google.com/app/apikey)
-
-### ❌ "Gemini is rate-limited"
-- **Cause**: You've exceeded free tier limits
-- **Fix**: Wait a few hours or upgrade to a paid Google Cloud account
-
-### ❌ "Cannot find package '@google/genai'"
-- **Cause**: Dependencies not installed
-- **Fix**: Run `npm install`
-
-### ❌ Server starts but won't listen on port 10000
-- **Cause**: Port 10000 is already in use
-- **Fix**: Kill the old process or set a different port:
-  ```powershell
-  $env:PORT=3000
-  npm start
-  ```
-  Then visit `http://localhost:3000`
-
----
-
-## Architecture
-
-### How It Works
-
-1. **User writes a prompt** in the browser (React UI)
-2. **Frontend sends** prompt + theme to `/api/generate-story`
-3. **Backend (Node.js)** calls Google Gemini API with the prompt
-4. **Gemini** generates a story and returns it
-5. **Frontend receives** the story and scores it locally
-6. **Story is displayed** with AI judge's verdict
-
-### Why Gemini on the Backend?
-
-- ✅ API key stays private (never exposed to browsers)
-- ✅ Stories are consistent across all users
-- ✅ Can moderate content server-side before showing users
-- ✅ Can implement rate limiting and usage tracking
-
----
-
-## Development Notes
-
-### Story Generation Pipeline (in `src/storyGeneration.ts`)
-
-The app includes a sophisticated local story generation system:
-- `extractPremise()` - Parses user prompt into structured data
-- `generateOutline()` - Creates 7-part story structure
-- `generateStoryFromOutline()` - Assembles into prose
-- `evaluateStoryQuality()` - Scores on 8 dimensions
-- `generateStory()` - Full pipeline with multi-attempt fallback
-
-This could be ported to the server to create a Gemini-free version.
-
-### Story Scoring (in `src/storyGeneration.ts` and `src/main.tsx`)
-
-- `scoreOtherStory()` - Evaluates stories for the Judge interface
-- `promptAnalysis()` - Scores prompt quality (100-point scale)
-- `buildStory()` - Combines all metrics into final AI verdict
-
----
-
-## Getting Help
-
-1. **Gemini API Issues**: Check [Google AI Documentation](https://ai.google.dev/)
-2. **Project Setup**: See [README.md](./README.md)
-3. **Gemini Configuration**: See [GEMINI_SETUP.md](./GEMINI_SETUP.md)
-4. **Code Documentation**: Check inline comments in `server.js` and `src/`
+Run `npm.cmd test` and `npm.cmd run test:e2e` for reproducible local checks. Tests use mocked AI and isolated state; they do not validate hosted credentials. For missing browser binaries, run `npx.cmd playwright install chromium`. Keep server logs free of participant text and secrets.

@@ -1,915 +1,1501 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { api, session, setAdminCsrf, readSaved, save, ApiError } from "./api";
+import { useFeed } from "./useFeed";
+import type { Round, Rankings, Story, Job, RoundState } from "./types";
+import {
+  t,
+  message,
+  getLanguage,
+  getLocale,
+  useLanguage,
+  setLanguage,
+} from "./i18n";
 import "./styles.css";
-
-type Theme = {
-  id: string; title: string; premise: string; icon: string;
-  difficulty: string; subjects: string[]; bonuses: string[];
+const labels: Record<RoundState, string> = {
+  WAITING: "Waiting to begin",
+  SUBMISSIONS_OPEN: "Story creation is open",
+  SUBMISSIONS_CLOSED: "Story creation is closed",
+  VOTING: "Public voting is open",
+  RESULTS: "Final results published",
 };
-
-type Story = {
-  id: string; author: string; theme: Theme; prompt: string;
-  title: string; text: string; promptPower: number;
-  ai: { humour:number; creativity:number; surprise:number; promptQuality:number; fit:number; overall:number; commentary:string };
-  votes: Vote[];
-  createdAt: number;
-};
-
-type Vote = { voter:string; funny:number; creative:number; surprise:number; fit:number };
-
-type CompetitionState = "OPEN" | "WAITING" | "SUBMISSIONS_OPEN" | "SUBMISSIONS_CLOSED" | "VOTING" | "RESULTS";
-
-type AiScore = { funny: number; creativity: number; relevance: number; overall: number };
-
-type SubmissionRecord = {
-  participantSession?: string;
-  id: string;
-  participantName: string;
-  prompt: string;
-  resultText: string;
-  title?: string;
-  theme?: string;
-  aiScore?: AiScore;
-  createdAt: number;
-  roundId?: string;
-};
-
-type VoteRecord = {
-  id: string;
-  submissionId: string;
-  voterSession: string;
-  overall: number;
-  ratings?: {
-    funniest?: number;
-    mostCreative?: number;
-    bestPrompt?: number;
-    overall?: number;
-  };
-};
-
-type LeaderboardEntry = {
-  submissionId: string;
-  participantName: string;
-  prompt: string;
-  resultText: string;
-  title?: string;
-  theme?: string;
-  aiScore: AiScore;
-  averageScore: number;
-  voteCount: number;
-  finalScore: number;
-  scoreMax: number;
-  createdAt: number;
-};
-
-type CompetitionRound = {
-  id: string;
-  title: string;
-  roundNumber: number;
-  state: CompetitionState;
-  submissions: SubmissionRecord[];
-  votes: VoteRecord[];
-  leaderboard: LeaderboardEntry[];
-};
-
-type CompetitionResponse = {
-  ok: boolean;
-  state: CompetitionState;
-  competition: {
-    currentRound: CompetitionRound;
-    rounds?: Array<{ id:string; title:string; roundNumber:number; state:CompetitionState; submissions:SubmissionRecord[]; votes:VoteRecord[]; }>;
-  };
-};
-
-const defaultTheme: Theme = {id:"story",title:"Creative Story",premise:"Write a funny story based on the user's idea.",icon:"✨",difficulty:"Easy",subjects:["story","funny","creative"],bonuses:["🎭 a twist"]};
-
-const themes: Theme[] = [defaultTheme];
-
-const nickAdjectives = ["Captain","Mighty","Sneaky","Sparkly","Chaotic","Brave","Witty","Turbo","Legendary","Happy"];
-const nickNouns = ["Prompt","Penguin","Ninja","Potato","Wizard","Koala","Comedian","Dragon","Banana","Olympian"];
-
-const fragments: Record<string,string> = {
-  Audience:" Make it suitable for all ages.",
-  Context:" Set the story in a surprising everyday situation.",
-  Specificity:" Add three concrete, funny details.",
-  Constraints:" Keep it under 200 words and give it a happy ending.",
-  "Output format":" Write it as a short comedy story with a punchline.",
-  Creativity:" Include an unexpected twist.",
-  Humour:" Make it playful, absurd and funny."
-};
-
-const scoreCategories = [
-  ["Goal",18,/\b(write|create|make|tell|generate|story|comedy)\b/i],
-  ["Audience",12,/\b(kids|children|everyone|family|seniors|people|coworkers|public)\b/i],
-  ["Context",12,/\b(in|at|during|while|because|occasion|setting|restaurant|office|home|station)\b/i],
-  ["Specificity",18,/\b(red|blue|green|yellow|purple|tiny|huge|old|young|grumpy|confident|wearing|silly|three|two|one)\b/i],
-  ["Constraints",8,/\b(under|less than|maximum|no sad|happy ending|words|limit)\b/i],
-  ["Output format",8,/\b(story|ending|punchline|paragraph|diary|news|dialogue)\b/i],
-  ["Creativity",12,/\b(twist|unexpected|strange|absurd|unusual|surprise|magical|ridiculous)\b/i],
-  ["Humour",12,/\b(funny|funniest|silly|joke|pun|absurd|hilarious|comedy|laugh)\b/i]
-] as const;
-
-const defaultRatings = { funniest: 0, mostCreative: 0, bestPrompt: 0, overall: 0 };
-
-function randomNick() {
-  return `${nickAdjectives[Math.floor(Math.random()*nickAdjectives.length)]} ${nickNouns[Math.floor(Math.random()*nickNouns.length)]}`;
+const ratings = [
+  "Not for me",
+  "A little funny",
+  "Enjoyable",
+  "Funny",
+  "Loved it",
+];
+const examples = [
+  "A robot takes everything literally at a family dinner.",
+  "A grandmother becomes a professional wrestler.",
+  "A cat accidentally becomes mayor.",
+];
+const score = (n: number | null | undefined) =>
+  n == null ? "—" : n.toFixed(2);
+function Feedback({ error }: { error: string }) {
+  return error ? (
+    <p className="notice error" role="alert">
+      {message(error)}
+    </p>
+  ) : null;
 }
-function uid() { return Math.random().toString(36).slice(2)+Date.now().toString(36); }
-function wordCount(s:string) { return s.trim() ? s.trim().split(/\s+/).length : 0; }
-
-function promptAnalysis(prompt:string) {
-  const maxBy = Object.fromEntries(scoreCategories.map(([n,m])=>[n,m])) as Record<string,number>;
-  const vals: Record<string,number> = {};
-  let total=0;
-  for (const [name,max,re] of scoreCategories) {
-    const hits = prompt.match(new RegExp(re.source, "gi"))?.length ?? 0;
-    const val = Math.min(max, hits * Math.max(1, Math.round(max/2)));
-    vals[name]=val; total+=val;
-  }
-  if (/\b(twist|unexpected|surprise)\b/i.test(prompt)) vals.Creativity=Math.min(12, vals.Creativity+4);
-  total = Math.min(100,total);
-  return {total, vals, maxBy};
-}
-
-function extractName(prompt:string) {
-   const match = prompt.match(/\b[A-Z][a-z]{2,15}\b/);
-   return match?.[0] ?? ["Mabel","Doreen","Reginald","Chip","Alicia","Benny"][Math.floor(Math.random()*6)];
-}
-
-function buildStory(theme:Theme, prompt: string, text: string) {
-  const pa = promptAnalysis(prompt);
-  const name = extractName(prompt);
-
-  const humour = Math.min(
-    10,
-    5 +
-    (pa.vals.Humour / 12 * 2) +
-    (/\b(funny|joke|absurd|silly)\b/i.test(prompt) ? 1 : 0)
-  );
-
-  const creativity = Math.min(
-    10,
-    4 +
-    (pa.vals.Creativity / 12 * 3) +
-    (/\b(twist|unexpected|surprise)\b/i.test(prompt) ? 1.5 : 0)
-  );
-
-  const surprise = Math.min(
-    10,
-    4 +
-    (/\b(twist|unexpected|surprise)\b/i.test(prompt) ? 3 : 1) +
-    (Math.random() * 1.5)
-  );
-
-  const promptQuality = Math.min(10, 3 + pa.total / 100 * 7);
-
-  const fit = Math.min(
-    10,
-    3 +
-      theme.subjects.filter(x =>
-        prompt.toLowerCase().includes(x.toLowerCase())
-      ).length /
-      Math.max(1, theme.subjects.length) *
-      7
-  );
-
-  const overall = Math.max(
-    0,
-    Math.min(
-      10,
-      humour * 0.35 +
-      creativity * 0.20 +
-      surprise * 0.15 +
-      promptQuality * 0.20 +
-      fit * 0.10
-    )
-  );
-
-  let commentary = "";
-  if (overall >= 9) {
-    commentary = "The AI judge has concerns. Mainly because it is laughing too hard to continue.";
-  } else if (overall >= 8) {
-    commentary = "Strong comedy. The situation escalated beautifully.";
-  } else if (overall >= 7) {
-    commentary = "Pretty solid. The AI judge reluctantly approves.";
-  } else if (overall >= 5) {
-    commentary = "A decent attempt. The comedy department requests more chaos.";
-  } else {
-    commentary = "The story survived. The jokes are still under investigation.";
-  }
-
-  return {
-    title: `The Great Tale of ${name} and ${theme.title}`,
-    text,
-    promptPower: pa.total,
-    ai: {
-      humour,
-      creativity,
-      surprise,
-      promptQuality,
-      fit,
-      overall,
-      commentary
-    }
-  };
-}
-
-function sanitizeStoredStories(value: unknown): Story[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-
-    const story = item as Partial<Story>;
-    const theme = story.theme && typeof story.theme === "object"
-      ? { ...defaultTheme, ...story.theme }
-      : defaultTheme;
-    const ai = story.ai && typeof story.ai === "object"
-      ? {
-          humour: typeof story.ai.humour === "number" ? story.ai.humour : 0,
-          creativity: typeof story.ai.creativity === "number" ? story.ai.creativity : 0,
-          surprise: typeof story.ai.surprise === "number" ? story.ai.surprise : 0,
-          promptQuality: typeof story.ai.promptQuality === "number" ? story.ai.promptQuality : 0,
-          fit: typeof story.ai.fit === "number" ? story.ai.fit : 0,
-          overall: typeof story.ai.overall === "number" ? story.ai.overall : 0,
-          commentary: typeof story.ai.commentary === "string" ? story.ai.commentary : ""
-        }
-      : { humour:0, creativity:0, surprise:0, promptQuality:0, fit:0, overall:0, commentary:"" };
-
-    const votes = Array.isArray(story.votes) ? story.votes.filter((vote): vote is Vote => !!vote && typeof vote === "object" && typeof vote.voter === "string") : [];
-
-    const safeStory: Story = {
-      id: typeof story.id === "string" ? story.id : uid(),
-      author: typeof story.author === "string" ? story.author : "Anonymous",
-      theme,
-      prompt: typeof story.prompt === "string" ? story.prompt : "",
-      title: typeof story.title === "string" ? story.title : "Untitled story",
-      text: typeof story.text === "string" ? story.text : "",
-      promptPower: typeof story.promptPower === "number" ? story.promptPower : 0,
-      ai,
-      votes,
-      createdAt: typeof story.createdAt === "number" ? story.createdAt : Date.now(),
-    };
-
-    return safeStory.prompt && safeStory.text ? [safeStory] : [];
-  });
-}
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(init?.headers || {}) }, ...init });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(typeof payload?.error === "string" ? payload.error : "Request failed.");
-  }
-  return payload as T;
-}
-
-function createVoterId() {
-  return globalThis.crypto?.randomUUID?.() ?? uid();
-}
-
-function storedVoterId() {
-  try {
-    const saved = localStorage.getItem("po-voter-id");
-    if (saved) return saved;
-    const id = createVoterId();
-    localStorage.setItem("po-voter-id", id);
-    return id;
-  } catch {
-    return createVoterId();
-  }
-}
-
 function App() {
-  const [page,setPage]=useState<"home"|"play"|"gallery"|"leaderboard"|"voting">("home");
-  const [step,setStep]=useState<"nickname"|"prompt"|"generate"|"story">("nickname");
-  const [nickname,setNickname]=useState(randomNick());
-  const [theme,setTheme]=useState(defaultTheme);
-  const [prompt,setPrompt]=useState("");
-  const [story,setStory]=useState<Story|null>(null);
-  const storyRef=useRef<Story|null>(null);
-  const [loading,setLoading]=useState("🤖 AI is warming up…");
-  const [generationError,setGenerationError]=useState("");
-  const [isGenerating,setIsGenerating]=useState(false);
-  const [largeText,setLargeText]=useState(false);
-  const [highContrast,setHighContrast]=useState(false);
-  const [reduced,setReduced]=useState(false);
-  const [sound,setSound]=useState(true);
-  const [competitionLoading, setCompetitionLoading] = useState(true);
-  const [competitionError, setCompetitionError] = useState("");
-  const [submissionStatus, setSubmissionStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [submissionError, setSubmissionError] = useState("");
-  const [competition,setCompetition]=useState<CompetitionResponse | null>(null);
-  const [voteSessionId,setVoteSessionId]=useState(storedVoterId);
-  const [voteName,setVoteName]=useState("");
-  const voteDrafts = useRef<Record<string, typeof defaultRatings>>({});
-  const [voteRatings,setVoteRatings]=useState(defaultRatings);
-  const [voteError,setVoteError]=useState("");
-  const [voteSuccess,setVoteSuccess]=useState("");
-  const [isSubmittingVote,setIsSubmittingVote]=useState(false);
-  const [selectedSubmissionId,setSelectedSubmissionId]=useState<string|null>(null);
-
-  const competitionState = competition?.state ?? "WAITING";
-  const currentRound = competition?.competition?.currentRound ?? null;
-
+  const language = useLanguage();
+  const [ready, setReady] = useState(false),
+    [error, setError] = useState(""),
+    [path, setPath] = useState(window.location.pathname);
+  const [large, setLarge] = useState(() => readSaved("large", false)),
+    [contrast, setContrast] = useState(() => readSaved("contrast", false)),
+    [reduced, setReduced] = useState(() => readSaved("reduced", false));
+  async function init() {
+    try {
+      await session();
+      setReady(true);
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   useEffect(() => {
-    void loadCompetition();
+    void init();
+    const pop = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
   }, []);
-
-  async function loadCompetition() {
-    setCompetitionLoading(true);
-    setCompetitionError("");
-    try {
-      const result = await fetchJson<CompetitionResponse>("/api/competition");
-      setCompetition(result);
-    } catch (error) {
-      setCompetitionError(error instanceof Error ? error.message : "Could not load the competition.");
-    } finally {
-      setCompetitionLoading(false);
-    }
+  useEffect(() => {
+    save("large", large);
+    save("contrast", contrast);
+    save("reduced", reduced);
+  }, [large, contrast, reduced]);
+  function navigate(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    const p = e.currentTarget.pathname;
+    history.pushState({}, "", p);
+    setPath(p);
+    window.scrollTo(0, 0);
   }
-
-  const currentCandidate = (currentRound?.submissions ?? []).find((submission) => submission.id === selectedSubmissionId) ?? null;
-
-  const votedIds = new Set((currentRound?.votes ?? [])
-    .filter(vote => vote.voterSession.toLowerCase() === voteSessionId.toLowerCase())
-    .map(vote => vote.submissionId));
-  const existingVote = currentRound?.votes.find(vote =>
-    vote.submissionId === selectedSubmissionId && vote.voterSession.toLowerCase() === voteSessionId.toLowerCase());
-
-  function openEntry(submissionId: string) {
-    if (selectedSubmissionId && !existingVote) voteDrafts.current[selectedSubmissionId] = voteRatings;
-    setSelectedSubmissionId(submissionId);
-    setVoteRatings(voteDrafts.current[submissionId] ?? defaultRatings);
-    setVoteError("");
-    setVoteSuccess("");
-    setPage("voting");
-  }
-  function startNewVoter() {
-    const nextVoterId = createVoterId();
-    try { localStorage.setItem("po-voter-id", nextVoterId); } catch {}
-    setVoteSessionId(nextVoterId);
-    setVoteName("");
-    setVoteRatings(defaultRatings);
-    voteDrafts.current = {};
-    setVoteError("");
-    setVoteSuccess("");
-  }
-  const activeStory=story ?? storyRef.current;
-
-  function startPlay() {
-    setSubmissionStatus("idle"); setSubmissionError("");
-    storyRef.current=null; setNickname(randomNick()); setTheme(defaultTheme); setPrompt(""); setStory(null); setGenerationError(""); setStep("nickname"); setPage("play");
-  }
-
-  async function generate(regenerate=false) {
-    if(!prompt.trim() || isGenerating) return;
-    setSubmissionStatus("idle");
-    setSubmissionError("");
-    setIsGenerating(true);
-    setGenerationError("");
-    setStep("generate");
-    const messages=["🤖 AI is warming up…","😂 Searching for comedy…","💥 Preparing the plot twist…","🧠 Translating your genius…"];
-    let i=0; setLoading(messages[0]);
-    const timer=setInterval(()=>{i++;setLoading(messages[i%messages.length]);},2400);
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 45000);
-    try {
-      const response = await fetch("/api/generate-story", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, theme: `${theme.title}: ${theme.premise}`, regenerate, previousStory: regenerate ? activeStory?.text : undefined }),
-        signal: controller.signal
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || typeof payload.text !== "string") {
-        throw new Error(payload.error || "The story AI could not generate a story. Please try again.");
-      }
-      clearInterval(timer); window.clearTimeout(timeout);
-      const g=buildStory(theme,prompt,payload.text.trim());
-      const aiTitle = typeof payload.title === "string" ? payload.title.trim() : "";
-      const title = aiTitle || g.title;
-      const submissionStory:Story={
-        id: regenerate && activeStory ? activeStory.id : uid(),
-        author:nickname.trim(),
-        theme,
-        prompt,
-        title,
-        text:g.text,
-        promptPower:g.promptPower,
-        ai:g.ai,
-        votes:[],
-        createdAt:Date.now()
-      };
-      storyRef.current=submissionStory;
-      setStory(submissionStory);
-      setStep("story");
-
-      setSubmissionStatus("saving");
-      try {
-        const saved = await fetchJson<{ ok: boolean; submission: SubmissionRecord; round: CompetitionRound }>("/api/submissions", {
-          method: "POST",
-          body: JSON.stringify({ participantName: submissionStory.author, prompt: submissionStory.prompt,
-            resultText: submissionStory.text, title, theme: theme.title, participantSession: voteSessionId })
-        });
-        if (!saved.ok || !saved.submission || !saved.round) throw new Error("The server did not confirm your entry.");
-        const confirmedStory = { ...submissionStory, id: saved.submission.id };
-        storyRef.current = confirmedStory;
-        setStory(confirmedStory);
-        setCompetition({ ok: true, state: saved.round.state, competition: { currentRound: saved.round } });
-        setCompetitionError("");
-        setSubmissionStatus("saved");
-      } catch (error) {
-        setSubmissionStatus("error");
-        setSubmissionError(error instanceof Error ? error.message : "Your entry could not be confirmed.");
-      }
-    } catch (error) {
-      clearInterval(timer); window.clearTimeout(timeout);
-      setGenerationError(error instanceof DOMException && error.name === "AbortError" ? "The story AI took too long to reply. Please try again." : error instanceof Error ? error.message : "The story AI could not generate a story. Please try again.");
-      setStep(regenerate ? "story" : "prompt");
-    } finally {
-      setIsGenerating(false);
-    }
-  }
-
-  const shellClass=`app ${largeText?"large-text":""} ${highContrast?"contrast":""} ${reduced?"reduced":""}`;
-  const nav=(p:typeof page)=>{if (isSubmittingVote) return; setPage(p); if(p==="play")startPlay();};
-
-  async function handleVoteSubmit() {
-    if (isSubmittingVote || existingVote) return;
-    if (!currentCandidate) {
-      setVoteError("Pick an entry from the gallery first.");
-      return;
-    }
-    if (!voteRatings.overall) {
-      setVoteError("Please choose a 1–5 Overall rating before submitting.");
-      return;
-    }
-    if (isOwnEntry(currentCandidate)) {
-      setVoteError("You cannot vote for your own submission.");
-      return;
-    }
-
-    setIsSubmittingVote(true);
-    setVoteError("");
-    setVoteSuccess("");
-    try {
-      const result = await fetchJson<{ ok: boolean; round: CompetitionRound }>("/api/votes", {
-        method: "POST",
-        body: JSON.stringify({
-          submissionId: currentCandidate.id,
-          voterSession: voteSessionId,
-          participantName: voteName.trim(),
-          ratings: {
-            funniest: voteRatings.funniest,
-            mostCreative: voteRatings.mostCreative,
-            bestPrompt: voteRatings.bestPrompt,
-            overall: voteRatings.overall,
-            overallScore: voteRatings.overall
-          }
-        })
-      });
-      if (!result.ok || !result.round) throw new Error("Your vote was not confirmed. Please refresh the competition before trying again.");
-      delete voteDrafts.current[currentCandidate.id];
-      // Use the round returned by the vote itself so the leaderboard updates instantly, without a second fetch.
-      if (result.round) {
-        setCompetition((prev) => prev ? { ...prev, competition: { ...prev.competition, currentRound: result.round } } : prev);
-      }
-      setVoteSuccess(`Vote recorded: ${voteRatings.overall} of 5 overall. Thank you for taking part!`);
-      setVoteRatings(defaultRatings);
-    } catch (error) {
-      setVoteError(error instanceof Error ? error.message : "The vote could not be saved. Please try again.");
-    } finally {
-      setIsSubmittingVote(false);
-    }
-  }
-
-  const leaderboard = currentRound?.leaderboard ?? [];
-  const listState = { loading: competitionLoading, error: competitionError, onRetry: loadCompetition, onCreate: startPlay };
-  function isOwnEntry(entry: SubmissionRecord) {
-    return entry.participantSession === voteSessionId ||
-      (!!voteName.trim() && entry.participantName.toLowerCase() === voteName.trim().toLowerCase());
-  }
-  const eligibleEntries = (currentRound?.submissions ?? []).filter(entry => !isOwnEntry(entry));
-  const remainingEntries = eligibleEntries.filter(entry => !votedIds.has(entry.id));
-  const nextEntry = remainingEntries.find(entry => entry.id !== selectedSubmissionId);
-  const ownEntry = currentCandidate ? isOwnEntry(currentCandidate) : false;
-
-  return <div className={shellClass}>
-    <a className="skip-link" href="#main-content">Skip to content</a>
-    <header className="topbar">
-      <button className="brand" onClick={()=>nav("home")}><span className="brand-mark">✨</span><span>Prompt <b>Olympics</b></span></button>
-      <nav aria-label="Main navigation">{(["home","play","gallery","leaderboard","voting"] as const).map(p=><button disabled={isSubmittingVote} aria-current={page===p?"page":undefined} className={page===p?"active":""} onClick={()=>nav(p)} key={p}>{({home:"Home",play:"Create a story",gallery:"Read stories",leaderboard:"Scores",voting:"Vote"})[p]}</button>)}</nav>
-      <a className="tiny admin-link" href="/admin">⚙️ Admin</a>
-    </header>
-    <div className="reading-tools" role="group" aria-label="Reading preferences">
-      <span>Make yourself comfortable</span>
-      <button type="button" aria-pressed={largeText} onClick={()=>setLargeText(!largeText)}>Aa {largeText ? "Standard text" : "Larger text"}</button>
-      <button type="button" aria-pressed={reduced} onClick={()=>setReduced(!reduced)}>Less movement</button>
-    </div>
-
-    {page === "home" && <main id="main-content" tabIndex={-1} className="home">
-      <section className="hero">
-        <div className="eyebrow">A story to share. A reason to smile.</div>
-        <h1>Your idea.<br/><span>A little laughter.</span></h1>
-        <p className="hero-description">Share a simple idea and let AI turn it into a funny story. Read what others have created, and vote for the stories you enjoy.</p>
-        <p className="welcome-note">No experience with AI needed. Just bring your imagination.</p><p className="round-label">{currentRound ? `Round ${currentRound.roundNumber}: ${currentRound.title}` : "Round 1"}</p>
-        <div className="hero-actions">
-          <button className="primary" onClick={startPlay}>Create my story →</button>
-          <button className="secondary" onClick={()=>setPage("gallery")}>Read stories and vote</button>
-          {competitionState === "RESULTS" && <button className="primary" onClick={()=>setPage("leaderboard")}>View scores</button>}
-          {competitionState === "WAITING" && <button className="secondary" onClick={()=>setPage("play")}>⏳ Waiting for round start</button>}
-        </div>
-      </section>
-      {(competitionLoading || competitionError) && <div className="home-feedback"><DataFeedback loading={competitionLoading} error={competitionError} onRetry={loadCompetition} /></div>}
-      <section className="podium">
-        <div><span>🏟️</span><div><small>Round</small><strong>{currentRound?.roundNumber ?? "—"}</strong></div></div>
-        <div><span>📊</span><div><small>Competition</small><strong>{currentRound ? ({OPEN:"Open to everyone",WAITING:"Starting soon",SUBMISSIONS_OPEN:"Share a story",SUBMISSIONS_CLOSED:"Stories submitted",VOTING:"Voting is open",RESULTS:"See the scores"})[competitionState] : "—"}</strong></div></div>
-        <div><span>🏆</span><div><small>Stories shared</small><strong>{currentRound?.submissions.length ?? "—"}</strong></div></div>
-      </section>
-      <section className="how-it-works" aria-labelledby="how-it-works-title">
-        <div className="section-heading"><h2 id="how-it-works-title">Everyone has a story to tell.</h2><p>Three simple steps to take part.</p></div>
-        <ol className="steps-grid">
+  return (
+    <div
+      className={`app ${large ? "large-text" : ""} ${contrast ? "contrast" : ""} ${reduced ? "reduced" : ""}`}
+    >
+      <a className="skip" href="#main">
+        {t("Skip to content")}{" "}
+      </a>
+      <header className="topbar">
+        <a className="brand" href="/" onClick={navigate}>
+          <span className="brand-mark">
+            P<span>O</span>
+          </span>
+          <span>{t("Prompt Olympics")}</span>
+        </a>
+        <nav aria-label={t("Main navigation")}>
           {[
-            ["01", "Start with an idea", "Choose a name and describe what you would like to happen. One or two sentences is enough."],
-            ["02", "Enjoy your story", "AI writes a short, funny story from your idea and shares it for everyone to read."],
-            ["03", "Read and vote", "Read other stories and give them 1 to 5 stars. Your vote counts just as much as the AI score."]
-          ].map(([number, title, description]) => <li key={number}><span className="step-number" aria-hidden="true">{number}</span><h3>{title}</h3><p>{description}</p></li>)}
-        </ol>
-      </section>
-    </main>}
-
-    {page === "play" && <main id="main-content" tabIndex={-1} className="game">
-      <div className="progress"><span>Your story</span><div><i style={{width:`${({nickname:25,prompt:50,generate:85,story:100} as Record<string,number>)[step]}%`}}/></div><span>{({nickname:"1. Your name",prompt:"2. Your idea",generate:"3. Writing",story:"4. Ready"})[step]}</span></div>
-      {step === "nickname" && <Card icon="👋" title="What name would you like to use?" sub="Use your first name or a made-up name. This name will appear beside your story."><label className="field-label" htmlFor="nickname">Your name</label><div className="nickbox"><input id="nickname" autoComplete="nickname" value={nickname} maxLength={24} onChange={e=>setNickname(e.target.value)}/><button onClick={()=>setNickname(randomNick())}>Suggest a name</button></div><button className="primary full" disabled={!nickname.trim()} onClick={()=>setStep("prompt")}>Next: write your idea →</button></Card>}
-      {step === "prompt" && <PromptScreen prompt={prompt} setPrompt={setPrompt} onGenerate={generate} error={generationError} isGenerating={isGenerating}/>}
-
-      {step === "generate" && <Card icon="🤖" title={loading} sub="Your idea is being turned into a story…"><div className="loader" role="status" aria-live="polite"><div>🏃</div><p>Writing your story…</p></div></Card>}
-      {step === "story" && activeStory && <StoryCard story={activeStory} onRegenerate={()=>generate(true)} onBackToPrompt={()=>setStep("prompt")} error={generationError} status={submissionStatus} saveError={submissionError} busy={isGenerating} onView={()=>openEntry(activeStory.id)} onBrowse={()=>setPage("gallery")}/>}
-      {step === "story" && !activeStory && <Card icon="⚠️" title="Your story did not load" sub="We could not finish your story this time. Your idea is still here. Please try again."><button className="primary full" onClick={()=>setStep("prompt")}>← Back to my idea</button></Card>}
-    </main>}
-
-    {page === "gallery" && <Gallery entries={leaderboard} onOpen={openEntry} votedIds={votedIds} {...listState} />}
-    {page === "leaderboard" && <Leaderboard entries={leaderboard} {...listState} />}
-
-    {page === "voting" && (
-      <main id="main-content" tabIndex={-1} className="content voting-screen">
-        <div className="page-title compact">
-          <div>
-            <span>Your vote matters</span>
-            <h1>{selectedSubmissionId ? "What did you think of this story?" : "Find a story you enjoy."}</h1>
+            ["/", t("Home")],
+            ["/play", t("Create a Story")],
+            ["/vote", t("Read and Vote")],
+            ["/leaderboard", t("Leaderboard")],
+          ].map(([p, label]) => (
+            <a
+              key={p}
+              href={p}
+              onClick={navigate}
+              aria-current={path === p ? "page" : undefined}
+            >
+              {t(label)}
+            </a>
+          ))}
+        </nav>
+        <a href="/admin" onClick={navigate} className="admin-link">
+          {t("Organisers")}{" "}
+        </a>
+      </header>
+      <div className="language-switch" role="group" aria-label={t("Language")}>
+        <button
+          lang="en"
+          aria-pressed={language === "en"}
+          onClick={() => setLanguage("en")}
+        >
+          English
+        </button>
+        <button
+          lang="zh-Hans"
+          aria-pressed={language === "zh"}
+          onClick={() => setLanguage("zh")}
+        >
+          中文
+        </button>
+      </div>
+      <div className="accessibility" aria-label={t("Reading settings")}>
+        <button aria-pressed={large} onClick={() => setLarge(!large)}>
+          {t("Aa Larger text")}{" "}
+        </button>
+        <button aria-pressed={contrast} onClick={() => setContrast(!contrast)}>
+          {t("High contrast")}{" "}
+        </button>
+        <button aria-pressed={reduced} onClick={() => setReduced(!reduced)}>
+          {t("Less movement")}{" "}
+        </button>
+      </div>
+      <main
+        id="main"
+        onInvalid={(event) => {
+          const field = event.target as HTMLInputElement;
+          if (field.validity.valueMissing)
+            field.setCustomValidity(t("Please fill in this field."));
+          else if (
+            field.validity.rangeUnderflow ||
+            field.validity.rangeOverflow
+          )
+            field.setCustomValidity(
+              t("Enter a number between {min} and {max}.", {
+                min: field.min,
+                max: field.max,
+              }),
+            );
+        }}
+        onInput={(event) => {
+          const field = event.target as HTMLInputElement;
+          if (typeof field.setCustomValidity === "function")
+            field.setCustomValidity("");
+        }}
+      >
+        {!ready ? (
+          <div className="content">
+            <Feedback error={error} />
+            {error ? (
+              <button onClick={init}>{t("Retry connection")}</button>
+            ) : (
+              <p role="status">{t("Connecting to the event…")}</p>
+            )}
           </div>
-          {selectedSubmissionId && <button disabled={isSubmittingVote} className="secondary" onClick={() => { setSelectedSubmissionId(null); setPage("gallery"); }}>← Back to stories</button>}
-        </div>
-
-        {!competitionLoading && !competitionError && <div className="voting-progress">
-          <div><strong>{eligibleEntries.length - remainingEntries.length} of {eligibleEntries.length} stories rated</strong><span>{remainingEntries.length ? `${remainingEntries.length} more to read` : "You have rated every available story. Thank you!"}</span></div>
-          <progress aria-label="Your voting progress" value={eligibleEntries.length - remainingEntries.length} max={Math.max(1, eligibleEntries.length)}/>
-          <button className="secondary" onClick={loadCompetition} disabled={isSubmittingVote}>Check for new stories</button>
-        </div>}
-        {competitionLoading || competitionError ? <DataFeedback loading={competitionLoading} error={competitionError} onRetry={loadCompetition} /> : !currentCandidate ? (
-          <section className="card centered voting-empty">
-            <div className="bigicon">🗳️</div>
-            <h2>Choose a story to read.</h2>
-            <p className="sub">Choose any story and give it 1 to 5 stars. You can read as many or as few as you like.</p>
-            {nextEntry && <button className="primary full" onClick={()=>openEntry(nextEntry.id)}>Read a story →</button>}
-            <button className="secondary full" onClick={() => setPage("gallery")}>📖 Read stories</button>
-          </section>
+        ) : path === "/play" ? (
+          <Play />
+        ) : path === "/vote" ? (
+          <Vote />
+        ) : path === "/leaderboard" ? (
+          <Leaderboard />
+        ) : path === "/admin" ? (
+          <Admin />
         ) : (
-          <section className="card voting-card">
-            <div className="vote-header">
-              <div>
-                <small>Voting as</small>
-                <h3>{voteName.trim() || "You"}</h3>
-              </div>
-              <div>
-                <small>Story theme</small>
-                <h3>{currentCandidate.theme || "Creative Story"}</h3>
-              </div>
-            </div>
-
-            <details className="voter-box">
-              <summary>Your name (optional)</summary>
-              <label htmlFor="voter-name">Your name</label>
-              <input disabled={isSubmittingVote} id="voter-name" value={voteName} onChange={(e)=>setVoteName(e.target.value)} maxLength={40} placeholder="Enter your name" />
-              <p className="rating-hint">This device remembers which stories you have rated.</p>
-            </details>
-            <div className="new-voter-row">
-              <span>Passing this device to someone else?</span>
-              <button className="secondary" type="button" disabled={isSubmittingVote} onClick={startNewVoter}>Let the next person vote</button>
-            </div>
-
-            <div className="submission-panel">
-              <div className="submission-meta">
-                <span>A story to share</span>
-                <strong>{currentCandidate.participantName}</strong>
-              </div>
-              <details className="entry-prompt" open><summary>The idea behind this story</summary><p>{currentCandidate.prompt}</p></details>
-              <h2>{currentCandidate.title ?? "A story to share"}</h2>
-              <p>{currentCandidate.resultText}</p>
-              {currentCandidate.aiScore && (
-                <details className="ai-score">
-                  <summary>View AI scores · out of 5</summary>
-                  <div className="chips">
-                    <span>😂 Funny {currentCandidate.aiScore.funny.toFixed(1)}</span>
-                    <span>💡 Creativity {currentCandidate.aiScore.creativity.toFixed(1)}</span>
-                    <span>🎯 Relevance {currentCandidate.aiScore.relevance.toFixed(1)}</span>
-                    <span>⭐ Overall {currentCandidate.aiScore.overall.toFixed(1)}</span>
-                  </div>
-                </details>
-              )}
-            </div>
-
-            {ownEntry && <p className="feedback">This is your entry. You can read it, but you cannot vote for it.</p>}
-            {existingVote && <div className="feedback success" role="status"><strong>Already voted · {existingVote.overall} of 5 overall</strong><p>Your vote has been saved. Thank you!</p></div>}
-            <fieldset className="rating-area" disabled={isSubmittingVote || !!existingVote || ownEntry}><legend className="sr-only">Entry ratings</legend><p className="rating-hint">How much did you enjoy the story? Choose 1 to 5 stars, then select Save my vote.</p>
-              {[ ["⭐ Your rating", "overall"] ].map(([label, key]) => {
-                const rating = existingVote
-                  ? existingVote.ratings?.[key as keyof typeof defaultRatings] ?? (key === "overall" ? existingVote.overall : 0)
-                  : voteRatings[key as keyof typeof voteRatings];
-                return (
-                <div className="rating-row" key={key}>
-                  <div className="rating-label">{label}<small>{rating ? `${rating} of 5` : "Not rated"}</small></div>
-                  <div className="star-row" role="group" aria-label={`${label} rating`}>
-                    {[1,2,3,4,5].map(value => <label className={`star-choice ${rating >= value ? "selected" : ""}`} key={value}>
-                      <input type="radio" name={`rating-${key}`} value={value} checked={rating === value}
-                        aria-label={`${label}: ${value} of 5`} onChange={()=>setVoteRatings(prev=>({...prev, [key]:value}))}/>
-                      <span aria-hidden="true">{rating >= value ? "★" : "☆"}<small>{value}</small></span>
-                    </label>)}
-                    {key !== "overall" && rating > 0 && !existingVote && <button className="clear-rating" type="button" aria-label={`Clear ${label} rating`} onClick={()=>setVoteRatings(prev=>({...prev,[key]:0}))}>Clear</button>}
-                  </div>
-                </div>
-                );
-              })}
-              <p className="rating-scale">1 = Not for me / 3 = Enjoyable / 5 = Loved it</p><details className="optional-ratings">
-                <summary>Give more feedback (optional)</summary>
-                {[ ["😂 How funny was it?", "funniest"], ["💡 How imaginative was it?", "mostCreative"], ["✨ How good was the idea?", "bestPrompt"] ].map(([label, key]) => {
-                  const rating = existingVote?.ratings?.[key as keyof typeof defaultRatings] ?? voteRatings[key as keyof typeof voteRatings];
-                  return (
-                  <div className="rating-row" key={key}>
-                    <div className="rating-label">{label}<small>{rating ? `${rating} of 5` : "Not rated"}</small></div>
-                    <div className="star-row" role="group" aria-label={`${label} rating`}>
-                      {[1,2,3,4,5].map(value => <label className={`star-choice ${rating >= value ? "selected" : ""}`} key={value}>
-                        <input type="radio" name={`rating-${key}`} value={value} checked={rating === value}
-                          aria-label={`${label}: ${value} of 5`} onChange={()=>setVoteRatings(prev=>({...prev, [key]:value}))}/>
-                        <span aria-hidden="true">{rating >= value ? "★" : "☆"}<small>{value}</small></span>
-                      </label>)}
-                      {rating > 0 && !existingVote && <button className="clear-rating" type="button" aria-label={`Clear ${label} rating`} onClick={()=>setVoteRatings(prev=>({...prev,[key]:0}))}>Clear</button>}
-                    </div>
-                  </div>
-                  );
-                })}
-              </details>
-            </fieldset>
-
-            {voteError && <p className="generation-error" role="alert">⚠️ {voteError}</p>}
-            {voteSuccess && <p className="vote-success" role="status">✅ {voteSuccess}</p>}
-
-            <div className="row voting-actions">
-              <button className="secondary" disabled={isSubmittingVote || !!existingVote || ownEntry} onClick={() => { setVoteError(""); setVoteRatings(defaultRatings); }} type="button">Clear my choices</button>
-              <button className="primary" disabled={isSubmittingVote || !!existingVote || ownEntry || !voteRatings.overall} onClick={handleVoteSubmit} type="button">{isSubmittingVote ? "Saving…" : existingVote ? "Vote recorded" : "Save my vote"}</button>
-            </div>
-            <div className="row next-actions">
-              {nextEntry && <button className="primary" disabled={isSubmittingVote} onClick={()=>openEntry(nextEntry.id)}>{existingVote || ownEntry ? "Read another story →" : "Skip for now →"}</button>}
-              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("gallery")}>Read stories</button>
-              <button className="secondary" disabled={isSubmittingVote} onClick={()=>setPage("leaderboard")}>View scores</button>
-            </div>
-          </section>
+          <Home />
         )}
       </main>
-    )}
-  </div>
+      <footer>
+        {t(
+          "Prompt Olympics · Ideas, laughter and a little friendly competition.",
+        )}{" "}
+      </footer>
+    </div>
+  );
 }
-
-function Card({icon,title,sub,children}:{icon:string,title:string,sub:string,children:React.ReactNode}) {
-  return <section className="card centered"><div className="bigicon">{icon}</div><h2>{title}</h2><p className="sub">{sub}</p>{children}</section>
+function RoundStatus({ round }: { round: Round | null }) {
+  return (
+    <p className="round-status">
+      <span className="status-dot" />
+      {round
+        ? t("Round {number} · {state}", {
+            number: round.roundNumber,
+            state: t(labels[round.state]),
+          })
+        : t("Checking the current round…")}
+    </p>
+  );
 }
-function PromptCoach({prompt, setPrompt, disabled}: {prompt: string; setPrompt: (value: string) => void; disabled: boolean}) {
-  const analysis = useMemo(() => promptAnalysis(prompt), [prompt]);
-  const suggestions = Object.keys(fragments).filter(key => !prompt.includes(fragments[key].trim()))
-    .sort((a, b) => analysis.vals[a] / analysis.maxBy[a] - analysis.vals[b] / analysis.maxBy[b]).slice(0, 3);
-  return <aside className="inline-coach" aria-labelledby="coach-heading">
-    <h3 id="coach-heading">✨ Need a little help? <span>Optional</span></h3>
-    <p>Choose a suggestion to add to your idea. You can change the words afterwards.</p>
-    <div className="coach">{suggestions.map(key => <button key={key} type="button"
-      disabled={disabled || prompt.length + fragments[key].length > 700}
-      onClick={() => setPrompt(prompt + fragments[key])}>{({Audience:"Who is it for?",Context:"Where does it happen?",Specificity:"Add a few details",Constraints:"Keep it short", "Output format":"Give it a funny ending",Creativity:"Add a surprise",Humour:"Make it playful"} as Record<string,string>)[key]}<small>{fragments[key].trim()}</small></button>)}</div>
-    {suggestions.some(key => prompt.length + fragments[key].length > 700) && <p>Your idea is quite long. Remove a few words to add another suggestion.</p>}
-    {!suggestions.length && <p>You have added all the suggestions. You can still change the words above.</p>}
-  </aside>;
+function Home() {
+  const { data, error, refresh } = useFeed<Round>("/api/competition");
+  return (
+    <div className="content">
+      <section className="hero">
+        <div>
+          <p className="eyebrow">{t("A competition for every imagination")}</p>
+          <h1>
+            {t("Turn your idea into a")} <em>{t("funny story.")}</em>
+          </h1>
+          <p className="intro">
+            {t(
+              "One little idea. One unexpected ending. Share a laugh, discover new stories, and help choose the crowd favourites.",
+            )}{" "}
+          </p>
+          <RoundStatus round={data} />
+          <div className="actions">
+            <a className="button primary" href="/play">
+              {t("Create a Story")} <span aria-hidden>↗</span>
+            </a>
+            <a className="button secondary" href="/vote">
+              {t("Read and Vote")}{" "}
+            </a>
+          </div>
+          <Feedback error={error} />
+          {error && <button onClick={refresh}>{t("Retry")}</button>}
+        </div>
+        <div className="hero-note">
+          <span className="edition">{t("PROMPT OLYMPICS")}</span>
+          <span className="hero-symbol" aria-hidden>
+            “
+          </span>
+          <h2>
+            {t("Small ideas.")} <br />
+            {t("Big laughs.")}{" "}
+          </h2>
+          <p>
+            {t("No writing experience needed.")} <br />
+            {t("Just bring your imagination.")}{" "}
+          </p>
+        </div>
+      </section>
+      <ol className="steps">
+        <li>
+          <span>{t("01 / CREATE")}</span>
+          <h2>{t("Start with an idea")}</h2>
+          <p>
+            {t(
+              "Tell us who, where, and what goes wrong. Gemini turns your idea into a short story.",
+            )}{" "}
+          </p>
+        </li>
+        <li>
+          <span>{t("02 / READ & VOTE")}</span>
+          <h2>{t("Find your favourites")}</h2>
+          <p>
+            {t("Read the stories and choose one rating from 1 to 5 stars.")}
+          </p>
+        </li>
+        <li>
+          <span>{t("03 / CELEBRATE")}</span>
+          <h2>{t("Watch the results")}</h2>
+          <p>
+            {t(
+              "AI judging and public ratings each contribute 50%. Follow the live leaderboard.",
+            )}{" "}
+          </p>
+        </li>
+      </ol>
+    </div>
+  );
 }
-
-function PromptScreen({prompt,setPrompt,onGenerate,error,isGenerating}:{prompt:string,setPrompt:(s:string)=>void,onGenerate:()=>void,error:string,isGenerating:boolean}) {
-  return <section className="card prompt-screen">
-    <h2>What should happen?</h2><p className="sub">Tell us who is in your story and what happens. A prompt is simply the idea you give to AI.</p>
-    <label className="field-label" htmlFor="story-prompt">Your story idea</label>
-    <div className="prompt-wrap"><textarea id="story-prompt" aria-describedby="prompt-count" value={prompt} disabled={isGenerating}
-      onChange={e=>setPrompt(e.target.value)} maxLength={700} placeholder="Example: A robot attends a family dinner and takes everything literally."/>
-      <span id="prompt-count">{prompt.length} / 700 characters</span></div>
-    <PromptCoach prompt={prompt} setPrompt={setPrompt} disabled={isGenerating}/>
-    {error && <p className="generation-error" role="alert">⚠️ {error}</p>}
-    <p className="rating-hint">When you create a story, it will be shared with everyone in this competition.</p>
-    <button className="primary full" disabled={!prompt.trim() || prompt.length > 700 || isGenerating} onClick={()=>onGenerate()}>Create and share my story →</button>
-  </section>;
-}
-
-function StoryCard({story,onRegenerate,onBackToPrompt,error,status,saveError,busy,onView,onBrowse}: {
-  story:Story; onRegenerate:()=>void; onBackToPrompt:()=>void; error:string;
-  status:"idle"|"saving"|"saved"|"error"; saveError:string; busy:boolean; onView:()=>void; onBrowse:()=>void;
-}) {
-  return <section className="card story-card" aria-busy={busy}>
-    <div className="story-meta"><span>{story.theme.icon} {story.theme.title}</span><span>✨ Story ready</span></div>
-    {status === "saving" && <div className="feedback" role="status">Your story is ready. Entering it into the competition…</div>}
-    {status === "saved" && <div className="feedback success"><p role="status"><strong>Your story is shared!</strong> Everyone can now read your story and vote for it.</p>
-      <div className="row"><button className="primary" onClick={onView}>Read my story</button><button className="secondary" onClick={onBrowse}>Browse stories</button></div></div>}
-    {status === "error" && <div className="feedback"><p className="generation-error" role="alert"><strong>Your story may not have been shared.</strong> {saveError}</p>
-      <p>Your story is still here. Check the story list to see whether it was shared before trying again.</p><button className="secondary" onClick={onBrowse}>Check the story list</button></div>}
-    <h2>{story.title}</h2><p className="story-text">{story.text}</p>
-    {error && <p className="generation-error" role="alert">⚠️ {error}</p>}
-    <p className="rating-hint">Creating another version shares a new story. Your first story will still be there.</p>
-    <button className="secondary full" disabled={busy} onClick={onRegenerate}>Create another version</button>
-    <button className="secondary full" disabled={busy} onClick={onBackToPrompt}>✍️ Write Another Story</button>
-  </section>;
-}
-
-type ListStateProps = { loading: boolean; error: string; onRetry: () => void; onCreate: () => void };
-function DataFeedback({loading,error,onRetry}: Omit<ListStateProps, "onCreate">) {
-  if (loading) return <div className="feedback" role="status">Loading stories and scores…</div>;
-  if (error) return <div className="feedback"><p role="alert"><strong>We could not load the stories.</strong> {error}</p><button className="secondary" onClick={onRetry}>Try again</button></div>;
-  return null;
-}
-function EmptyEntries({onCreate}: {onCreate: () => void}) {
-  return <div className="empty"><div aria-hidden="true">🏆</div><h2>The competition starts with you.</h2>
-    <p>Be the first to share a story. A simple idea is all you need.</p><button className="primary" onClick={onCreate}>Create a story</button></div>;
-}
-function ScoreGuide() {
-  return <details className="score-guide"><summary>How are scores calculated?</summary>
-    <p>Every score is out of 5. Half comes from AI and half from the average of your votes. Until someone votes, only the AI score is shown.</p></details>;
-}
-function EntryScores({entry}: {entry: LeaderboardEntry}) {
-  return <span className="entry-scores"><span>AI {entry.aiScore.overall.toFixed(1)} / 5</span>
-    <span>Public {entry.voteCount ? `${entry.averageScore.toFixed(1)} / 5` : "not rated"} · {entry.voteCount} {entry.voteCount === 1 ? "vote" : "votes"}</span>
-    <span className="score-equation">{entry.voteCount ? "Total score" : "AI score"} {entry.finalScore.toFixed(1)} / {entry.scoreMax}</span></span>;
-}
-function Gallery({entries,onOpen,votedIds,loading,error,onRetry,onCreate}: ListStateProps & {entries:LeaderboardEntry[]; onOpen:(id:string)=>void; votedIds:Set<string>}) {
-  const [sort,setSort]=useState("top");
-  const sorted=sort === "latest" ? [...entries].sort((a,b)=>b.createdAt-a.createdAt) : entries;
-  return <main id="main-content" tabIndex={-1} className="content">
-    <div className="page-title"><div><span>Stories from our community</span><h1>A little laughter,<br/><em>shared by everyone.</em></h1></div>
-      <div className="tabs" role="group" aria-label="Sort entries">{["top","latest"].map(x=><button aria-pressed={sort===x} className={sort===x?"active":""} onClick={()=>setSort(x)} key={x}>{x === "top" ? "Highest scores" : "Newest stories"}</button>)}</div></div>
-    <DataFeedback loading={loading} error={error} onRetry={onRetry}/>
-    {!loading && !error && (!sorted.length ? <EmptyEntries onCreate={onCreate}/> : <>
-      <ScoreGuide/><div className="story-grid">{sorted.map(entry=><button className="mini-story" key={entry.submissionId} onClick={()=>onOpen(entry.submissionId)} type="button">
-        <div><span>✨ {entry.theme || defaultTheme.title}</span><span className="final-score"><small>{entry.voteCount ? "Total score" : "AI score · awaiting votes"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span></div>
-        <h3>{entry.title || "A story to share"}</h3><p>{entry.resultText}</p><small>by {entry.participantName}</small>
-        <EntryScores entry={entry}/><span className="entry-action">{votedIds.has(entry.submissionId) ? "✓ You voted · Read again" : "Read and vote →"}</span>
-      </button>)}</div></>)}
-  </main>;
-}
-function Leaderboard({entries,loading,error,onRetry,onCreate}: ListStateProps & {entries:LeaderboardEntry[]}) {
-  return <main id="main-content" tabIndex={-1} className="content"><div className="page-title"><div><span>Community scores</span><h1>See how the<br/><em>stories are doing.</em></h1></div></div>
-    <DataFeedback loading={loading} error={error} onRetry={onRetry}/>
-    {!loading && !error && (!entries.length ? <EmptyEntries onCreate={onCreate}/> : <><ScoreGuide/><div className="leader">{entries.map((entry,i)=><div className="leader-row" key={entry.submissionId}>
-      <strong aria-label={`Rank ${i+1}`}>{["🥇","🥈","🥉"][i] ?? `#${i+1}`}</strong>
-      <span>{entry.participantName}<EntryScores entry={entry}/></span><span className="final-score"><small>{entry.voteCount ? "Total score" : "AI score · awaiting votes"}</small><b>{entry.finalScore.toFixed(1)} / {entry.scoreMax}</b></span>
-    </div>)}</div></>)}
-  </main>;
-}
-
-function AdminApp() {
-  const [password, setPassword] = useState("");
-  const [session, setSession] = useState<CompetitionResponse | null>(null);
-  const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
-
-  async function loadAdminData() {
-    try {
-      const data = await fetchJson<CompetitionResponse>("/api/admin/competition", {
-        headers: { "x-admin-password": password }
-      });
-      setSession(data);
-      setError("");
-      setLoaded(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed.");
-      setLoaded(false);
-    }
-  }
-
-  async function callAdmin(url: string, method = "POST") {
-    if (!password) {
-      setError("Enter the admin password first.");
-      return;
-    }
-    try {
-      const data = await fetchJson<{ ok: boolean; currentRound?: CompetitionRound; message?: string; competition?: { currentRound: CompetitionRound } }>(url, {
-        method,
-        headers: { "x-admin-password": password }
-      });
-      const nextRound = data.currentRound ?? data.competition?.currentRound ?? null;
-      if (nextRound) {
-        const fresh = { ...session, competition: { ...(session?.competition ?? {}), currentRound: nextRound } } as CompetitionResponse;
-        setSession(fresh);
+type GenerationOperation = {
+  key: string;
+  input: {
+    participantName: string;
+    prompt: string;
+    regenerate: boolean;
+    language?: "en" | "zh";
+  };
+  jobId?: string;
+};
+function Play() {
+  const round = useFeed<Round>("/api/competition", 30000);
+  const [name, setName] = useState(() => readSaved("name", "")),
+    [prompt, setPrompt] = useState(() => readSaved("prompt", ""));
+  const [operation, setOperation] = useState<GenerationOperation | null>(() =>
+    readSaved("generation", null),
+  );
+  const [job, setJob] = useState<Job | null>(() => readSaved("last-job", null)),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [recover, setRecover] = useState(false);
+  useEffect(() => {
+    save("name", name);
+    save("prompt", prompt);
+  }, [name, prompt]);
+  useEffect(() => {
+    save("generation", operation);
+  }, [operation]);
+  useEffect(() => {
+    save("last-job", job);
+  }, [job]);
+  useEffect(() => {
+    if (!operation) return;
+    let cancelled = false,
+      timer: ReturnType<typeof setTimeout>,
+      controller: AbortController | undefined;
+    async function reconcile() {
+      controller = new AbortController();
+      setBusy(true);
+      try {
+        let next: Job;
+        if (operation!.jobId)
+          next = await api<Job>(
+            "/api/jobs/" + operation!.jobId,
+            undefined,
+            undefined,
+            controller.signal,
+          );
+        else
+          next = await api<Job>(
+            "/api/generate-story",
+            operation!.input,
+            operation!.key,
+            controller.signal,
+          );
+        if (cancelled) return;
+        setJob(next);
+        setError("");
+        setRecover(false);
+        if (!operation!.jobId) setOperation({ ...operation!, jobId: next.id });
+        if (next.status === "ready" || next.status === "failed") {
+          setOperation(null);
+          setBusy(false);
+          if (next.status === "failed")
+            setError(next.error || "Please contact an organiser.");
+        } else timer = setTimeout(reconcile, 2000);
+      } catch (e) {
+        if (!cancelled) {
+          setError((e as Error).message);
+          setBusy(false);
+          const rejected =
+            e instanceof ApiError &&
+            e.status >= 400 &&
+            e.status < 500 &&
+            e.status !== 429;
+          setRecover(!rejected);
+          if (rejected) setOperation(null);
+        }
       }
-      setError("");
-      await loadAdminData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Admin action failed.");
+    }
+    void reconcile();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [operation]);
+  async function generate(regenerate = false) {
+    if (busy || operation) return;
+    setError("");
+    setJob(null);
+    setOperation({
+      key: crypto.randomUUID(),
+      input: {
+        participantName: name.trim(),
+        prompt: prompt.trim(),
+        regenerate,
+        language: getLanguage(),
+      },
+    });
+  }
+  const story = job?.submission;
+  function speak() {
+    if (!story) return;
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(story.resultText);
+    utterance.lang = /\p{Script=Han}/u.test(story.resultText)
+      ? "zh-SG"
+      : "en-SG";
+    speechSynthesis.speak(utterance);
+  }
+  useEffect(
+    () => () => {
+      window.speechSynthesis?.cancel();
+    },
+    [],
+  );
+  return (
+    <div className="content narrow">
+      <div className="page-title">
+        <p className="eyebrow">{t("Your imagination starts here")}</p>
+        <h1>{t("Create a Story")}</h1>
+        <RoundStatus round={round.data} />
+      </div>
+      <ol className="progress">
+        <li className={name ? "done" : ""}>{t("1. Your name")}</li>
+        <li className={prompt ? "done" : ""}>{t("2. Your idea")}</li>
+        <li className={story ? "done" : ""}>{t("3. Read & share")}</li>
+      </ol>
+      <Feedback error={error || round.error} />
+      {recover && (
+        <button
+          className="primary"
+          onClick={() => {
+            setRecover(false);
+            setOperation((o) => (o ? { ...o } : o));
+          }}
+        >
+          {t("Check and retry the same request")}{" "}
+        </button>
+      )}
+      {story ? (
+        <article className="card story-result">
+          <div className="story-meta">
+            <span>{story.participantName}</span>
+            <span className="badge">{t("Saved to the competition")}</span>
+          </div>
+          <h2>{story.title}</h2>
+          <p
+            className="story-text"
+            lang={/\p{Script=Han}/u.test(story.resultText) ? "zh-Hans" : "en"}
+          >
+            {story.resultText}
+          </p>
+          <div className="notice" role="status">
+            {story.aiScore
+              ? t(
+                  "AI score: {score} / 5 · Provisional until public voting is complete.",
+                  { score: score(story.aiScore.overall) },
+                )
+              : job?.status === "failed"
+                ? t("Story saved. AI judging needs an organiser’s attention.")
+                : t("Story saved. AI judging in progress…")}
+          </div>
+          <div className="actions">
+            <button
+              onClick={() => {
+                setJob(null);
+                save("last-job", null);
+              }}
+              disabled={busy}
+            >
+              {t("Create Another Story")}{" "}
+            </button>
+            <button
+              onClick={() => generate(true)}
+              disabled={busy || round.data?.state !== "SUBMISSIONS_OPEN"}
+            >
+              {t("Create another version")}{" "}
+            </button>
+            <a className="button primary" href="/vote">
+              {t("Read Other Stories")}{" "}
+            </a>
+            {"speechSynthesis" in window && (
+              <button onClick={speak}>{t("Read aloud")}</button>
+            )}
+          </div>
+        </article>
+      ) : (
+        <form
+          className="card"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void generate();
+          }}
+        >
+          <p className="hint">
+            {t(
+              getLanguage() === "zh"
+                ? "Story language: Chinese"
+                : "Story language: English",
+            )}
+          </p>
+          <label htmlFor="nickname">
+            {t("1. What name would you like to use?")}
+          </label>
+          <p className="hint">
+            {t(
+              "Your first name or a nickname will appear beside your story.",
+            )}{" "}
+          </p>
+          <div className="input-row">
+            <input
+              id="nickname"
+              autoComplete="nickname"
+              value={name}
+              maxLength={40}
+              required
+              disabled={busy}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                setName(
+                  t("Captain {name}", {
+                    name: t(
+                      ["Penguin", "Potato", "Wizard"][
+                        Math.floor(Math.random() * 3)
+                      ],
+                    ),
+                  }),
+                )
+              }
+            >
+              {t("Suggest a name")}{" "}
+            </button>
+          </div>
+          <label htmlFor="idea">{t("2. What happens in your story?")}</label>
+          <textarea
+            id="idea"
+            value={prompt}
+            maxLength={700}
+            required
+            rows={6}
+            disabled={busy}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={t(
+              "A robot arrives at a family dinner and takes everything literally…",
+            )}
+          />
+          <p className="hint">
+            {t(
+              "{count} / 700 characters · Who is there? Where are they? What goes wrong?",
+              { count: prompt.length },
+            )}
+          </p>
+          <details>
+            <summary>{t("Need an idea?")}</summary>
+            <div className="suggestions">
+              {examples.map((x) => (
+                <button
+                  type="button"
+                  key={x}
+                  disabled={busy}
+                  onClick={() => setPrompt(t(x))}
+                >
+                  {t(x)}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              disabled={busy || prompt.length > 640}
+              onClick={() =>
+                setPrompt(
+                  prompt + t(" Add an unexpected twist and a playful ending."),
+                )
+              }
+            >
+              {t("Add a twist")}{" "}
+            </button>
+          </details>
+          <button
+            className="primary full"
+            type="submit"
+            disabled={
+              busy ||
+              !!operation ||
+              !name.trim() ||
+              !prompt.trim() ||
+              round.data?.state !== "SUBMISSIONS_OPEN"
+            }
+          >
+            {busy ? t("Creating your story…") : t("Create and save my story")}
+          </button>
+          {busy && (
+            <p className="notice" role="status">
+              {job?.status === "queued"
+                ? t(
+                    "Many stories are being created right now. Your request is in the queue.",
+                  )
+                : job?.status === "saving"
+                  ? t("Saving your story…")
+                  : t("Creating your story. Your idea is safely kept here.")}
+            </p>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+type VoteOperation = { key: string; storyId: string; rating: number };
+function Vote() {
+  const round = useFeed<Round>("/api/competition", 30000),
+    [offset, setOffset] = useState(0);
+  const list = useFeed<{ items: Story[]; hasMore: boolean }>(
+    "/api/stories?offset=" + offset,
+  );
+  const [selected, setSelected] = useState<Story | null>(null),
+    [rating, setRating] = useState(0),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [success, setSuccess] = useState(""),
+    [code, setCode] = useState("");
+  const [pending, setPending] = useState<VoteOperation | null>(() =>
+    readSaved("pending-vote", null),
+  );
+  useEffect(() => {
+    save("pending-vote", pending);
+  }, [pending]);
+  function open(story: Story) {
+    if (busy || pending) return;
+    setSelected(story);
+    setRating(story.rating || 0);
+    setError("");
+    setSuccess("");
+  }
+  async function submit(op = pending) {
+    if (busy) return;
+    const request = op || {
+      key: crypto.randomUUID(),
+      storyId: selected!.id,
+      rating,
+    };
+    setPending(request);
+    save("pending-vote", request);
+    setBusy(true);
+    setError("");
+    try {
+      await api(
+        "/api/votes",
+        { submissionId: request.storyId, rating: request.rating },
+        request.key,
+      );
+      setPending(null);
+      save("pending-vote", null);
+      setSuccess("Your vote is recorded. Thank you!");
+      setSelected((s) =>
+        s?.id === request.storyId
+          ? { ...s, voted: true, rating: request.rating }
+          : s,
+      );
+      list.refresh();
+      round.refresh();
+    } catch (e) {
+      setError((e as Error).message);
+      if (
+        e instanceof ApiError &&
+        e.status >= 400 &&
+        e.status < 500 &&
+        e.status !== 429
+      ) {
+        setPending(null);
+        save("pending-vote", null);
+        list.refresh();
+      }
+    } finally {
+      setBusy(false);
     }
   }
-
-  const currentRound = session?.competition?.currentRound ?? null;
-
-  return <div className="admin-shell">
-    {!loaded ? (
-      <main id="main-content" tabIndex={-1} className="admin-login">
-        <section className="card centered admin-card">
-          <div className="bigicon">🔐</div>
-          <h2>Admin access</h2>
-          <label className="field-label" htmlFor="admin-password">Admin password</label><input id="admin-password" autoComplete="current-password" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Enter admin password" />
-          {error && <p className="generation-error" role="alert">⚠️ {error}</p>}
-          <div className="row">
-            <a className="secondary button-link" href="/">← Back to app</a>
-            <button className="primary" onClick={loadAdminData}>Unlock admin</button>
+  const items = list.data?.items || [],
+    next = items.find((s) => s.id !== selected?.id && !s.voted && !s.own);
+  return (
+    <div className="content">
+      <div className="page-title">
+        <p className="eyebrow">{t("Discover a little delight")}</p>
+        <h1>{t("Read and Vote")}</h1>
+        <RoundStatus round={round.data} />
+      </div>
+      <Feedback error={error || list.error || round.error} />
+      {pending && (
+        <div className="notice">
+          <p>
+            {t(
+              "A vote is awaiting confirmation. Retry uses the same request key and cannot add a second vote.",
+            )}{" "}
+          </p>
+          <button disabled={busy} onClick={() => submit(pending)}>
+            {t("Check and confirm my vote")}{" "}
+          </button>
+        </div>
+      )}
+      {round.data?.strictCodes && !round.data.verified && (
+        <form
+          className="card code-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await api("/api/voter-code", { code });
+              round.refresh();
+              setError("");
+            } catch (e) {
+              setError((e as Error).message);
+            }
+          }}
+        >
+          <label htmlFor="code">{t("Your event voting code")}</label>
+          <input
+            id="code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            maxLength={100}
+          />
+          <button className="primary">{t("Verify my code")}</button>
+        </form>
+      )}
+      {selected ? (
+        <div className="narrow">
+          <button
+            disabled={busy || !!pending}
+            onClick={() => setSelected(null)}
+          >
+            {t("← All stories")}{" "}
+          </button>
+          <article className="card vote-card">
+            <p className="eyebrow">
+              {t("A story by {name}", { name: selected.participantName })}
+            </p>
+            <h2>{selected.title}</h2>
+            <p
+              className="story-text"
+              lang={
+                /\p{Script=Han}/u.test(selected.resultText) ? "zh-Hans" : "en"
+              }
+            >
+              {selected.resultText}
+            </p>
+            <fieldset
+              disabled={
+                busy ||
+                selected.voted ||
+                selected.own ||
+                !!pending ||
+                round.data?.state !== "VOTING"
+              }
+            >
+              <legend>{t("How funny was this story?")}</legend>
+              <div
+                className="stars"
+                role="radiogroup"
+                aria-label={t("Story rating")}
+              >
+                {ratings.map((label, i) => (
+                  <label
+                    key={label}
+                    className={rating >= i + 1 ? "chosen" : ""}
+                  >
+                    <input
+                      type="radio"
+                      name="rating"
+                      value={i + 1}
+                      checked={rating === i + 1}
+                      onChange={() => setRating(i + 1)}
+                    />
+                    <span aria-hidden>★</span>
+                    <span className="sr-only">
+                      {t(
+                        i === 0
+                          ? "{count} star: {label}"
+                          : "{count} stars: {label}",
+                        { count: i + 1, label: t(label) },
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="hint">
+                {rating
+                  ? `${rating} / 5 · ${ratings[rating - 1]}`
+                  : t("Choose 1 to 5 stars.")}
+              </p>
+            </fieldset>
+            {selected.own ? (
+              <p className="notice">
+                {t(
+                  "This is your story. Try rating another participant’s story.",
+                )}{" "}
+              </p>
+            ) : selected.voted ? (
+              <p className="notice success" role="status">
+                {success
+                  ? message(success)
+                  : t("Your {rating}-star vote is recorded.", {
+                      rating: selected.rating,
+                    })}
+              </p>
+            ) : (
+              <button
+                className="primary full"
+                onClick={() => submit(null)}
+                disabled={
+                  !rating ||
+                  busy ||
+                  !!pending ||
+                  round.data?.state !== "VOTING" ||
+                  (!!round.data.strictCodes && !round.data.verified)
+                }
+              >
+                {busy ? t("Recording your vote…") : t("Submit Vote")}
+              </button>
+            )}
+            {next && (
+              <button
+                className="secondary full"
+                disabled={busy || !!pending}
+                onClick={() => open(next)}
+              >
+                {t("Read Next Story →")}{" "}
+              </button>
+            )}
+          </article>
+        </div>
+      ) : (
+        <>
+          <p className="intro">
+            {t(
+              "One story. One simple rating. Stories rotate so everyone gets a fair chance.",
+            )}{" "}
+          </p>
+          {!list.data && !list.error && (
+            <p role="status">{t("Loading stories…")}</p>
+          )}
+          {items.length === 0 && list.data && (
+            <div className="card">
+              <h2>{t("No stories here yet")}</h2>
+              <p>
+                {t("Check again once participants have shared their ideas.")}
+              </p>
+              <button onClick={list.refresh}>{t("Check for stories")}</button>
+            </div>
+          )}
+          <div className="story-grid">
+            {items.map((s) => (
+              <button
+                key={s.id}
+                className="mini-story"
+                onClick={() => open(s)}
+                disabled={busy || !!pending}
+              >
+                <p className="eyebrow">{s.participantName}</p>
+                <h2>{s.title}</h2>
+                <p>{s.resultText}</p>
+                <span>
+                  {s.own
+                    ? t("Your story")
+                    : s.voted
+                      ? t("Vote recorded")
+                      : t("Read this story →")}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="actions">
+            <button
+              disabled={offset === 0 || busy || !!pending}
+              onClick={() => setOffset(Math.max(0, offset - 20))}
+            >
+              {t("Previous stories")}{" "}
+            </button>
+            <button
+              disabled={!list.data?.hasMore || busy || !!pending}
+              onClick={() => setOffset(offset + 20)}
+            >
+              {t("More stories")}{" "}
+            </button>
+            <button disabled={busy} onClick={list.refresh}>
+              {t("Refresh stories")}{" "}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+function Leaderboard() {
+  const historicalRound = new URLSearchParams(window.location.search).get(
+    "round",
+  );
+  const { data, error, updated, refresh } = useFeed<Rankings>(
+    "/api/leaderboard" +
+      (historicalRound
+        ? "?roundId=" + encodeURIComponent(historicalRound)
+        : ""),
+  );
+  const [projector, setProjector] = useState(false);
+  useEffect(() => {
+    const listener = () => {
+      if (!document.fullscreenElement) setProjector(false);
+    };
+    document.addEventListener("fullscreenchange", listener);
+    return () => {
+      document.removeEventListener("fullscreenchange", listener);
+    };
+  }, []);
+  async function fullscreen() {
+    if (projector) {
+      setProjector(false);
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } else {
+      setProjector(true);
+      try {
+        await document
+          .querySelector(".leaderboard-screen")
+          ?.requestFullscreen();
+      } catch {
+        /* Clean presentation layout remains available. */
+      }
+    }
+  }
+  return (
+    <section
+      className={`content leaderboard-screen ${projector ? "projector" : ""}`}
+    >
+      <div className="page-title">
+        <div>
+          <p className="eyebrow">{t("The crowd meets the comedy judge")}</p>
+          <h1>{data?.final ? t("Final Results") : t("Live Leaderboard")}</h1>
+          <RoundStatus round={data?.round || null} />
+        </div>
+        <button onClick={fullscreen}>
+          {projector ? t("Exit presentation") : t("Present fullscreen")}
+        </button>
+      </div>
+      <div className="refresh-line">
+        <span>
+          {updated
+            ? t("Last checked {time}", {
+                time: updated.toLocaleTimeString(getLocale()),
+              })
+            : t("Loading the latest confirmed rankings…")}
+        </span>
+        <button onClick={refresh}>{t("Refresh now")}</button>
+      </div>
+      <Feedback error={error} />
+      {error && data && (
+        <p className="hint">
+          {t("The last confirmed rankings remain visible.")}
+        </p>
+      )}
+      <p className="hint">
+        {t(
+          "50% AI + 50% public average. {count} public votes are needed for award eligibility. Ties: public score, AI score, vote count, then story ID.",
+          { count: data?.round.minVotes || 5 },
+        )}
+      </p>
+      {data && (
+        <>
+          <div className="podium">
+            {data.entries.slice(0, 3).map((e, i) => (
+              <article
+                key={e.submissionId}
+                className={`podium-card place-${i + 1}`}
+              >
+                <span className="medal">{["01", "02", "03"][i]}</span>
+                <p>{e.eligible ? t("Award eligible") : t("Provisional")}</p>
+                <h2>{e.participantName}</h2>
+                <p>{e.title}</p>
+                <strong>
+                  {score(e.finalScore)}
+                  <small> / 5</small>
+                </strong>
+                <div className="score-detail">
+                  {t("AI {ai} · Public {public} · {count} votes", {
+                    ai: score(e.aiScore),
+                    public: score(e.averageScore),
+                    count: e.voteCount,
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
+          <div
+            className="rankings"
+            role="table"
+            aria-label={t("Competition rankings")}
+          >
+            <div className="rank-row table-heading" role="row">
+              <span role="columnheader">{t("Rank / Participant")}</span>
+              <span role="columnheader">{t("AI")}</span>
+              <span role="columnheader" aria-label={t("Public")}>
+                {getLanguage() === "zh" ? t("Public short") : t("Public")}
+              </span>
+              <span role="columnheader">{t("Total")}</span>
+              <span role="columnheader">{t("Votes")}</span>
+            </div>
+            {data.entries.map((e, i) => (
+              <div className="rank-row" key={e.submissionId} role="row">
+                <div role="cell">
+                  <b className="rank-number">{i + 1}</b>
+                  <span>
+                    <strong>{e.participantName}</strong>
+                    <small>
+                      {e.title} ·{" "}
+                      {e.eligible
+                        ? t("Award eligible")
+                        : e.aiScore == null
+                          ? t("AI judging {status}", {
+                              status: t(e.judgingStatus),
+                            })
+                          : t("Provisional")}
+                    </small>
+                  </span>
+                </div>
+                <span role="cell">{score(e.aiScore)}</span>
+                <span role="cell">{score(e.averageScore)}</span>
+                <strong role="cell">{score(e.finalScore)}</strong>
+                <span role="cell">{e.voteCount}</span>
+              </div>
+            ))}
+          </div>
+          {!data.entries.length && (
+            <p className="card">{t("No stories in this round yet.")}</p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+type AdminData = {
+  round: Round;
+  data: Record<string, any>;
+  metrics: Record<string, any>;
+  transitions: RoundState[];
+};
+function Admin() {
+  const [health, setHealth] = useState<{ geminiConfigured: boolean } | null>(
+    null,
+  );
+  const [logged, setLogged] = useState(false),
+    [password, setPassword] = useState(""),
+    [data, setData] = useState<AdminData | null>(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [codes, setCodes] = useState<string[]>([]),
+    [minVotes, setMinVotes] = useState(5),
+    [strict, setStrict] = useState(false);
+  async function load() {
+    const result = await api<AdminData>("/api/admin/competition");
+    setData(result);
+    setMinVotes(result.round.minVotes);
+    setStrict(!!result.round.strictCodes);
+  }
+  useEffect(() => {
+    let gone = false;
+    api<{ csrf: string }>("/api/admin/session")
+      .then(async (s) => {
+        if (gone) return;
+        setAdminCsrf(s.csrf);
+        setLogged(true);
+        await load();
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, []);
+  async function login(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const s = await api<{ csrf: string }>("/api/admin/login", { password });
+      setAdminCsrf(s.csrf);
+      setPassword("");
+      setLogged(true);
+      await load();
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function action(
+    name: string,
+    body: Record<string, unknown> = {},
+    confirmation?: string,
+  ) {
+    if (busy || (confirmation && !window.confirm(t(confirmation)))) return;
+    setBusy(true);
+    try {
+      await api("/api/admin/" + name, {
+        ...body,
+        ...(confirmation ? { confirm: true } : {}),
+      });
+      if (name !== "logout") await load();
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!logged)
+    return (
+      <div className="content narrow">
+        <form className="card" onSubmit={login}>
+          <p className="eyebrow">{t("Organiser access")}</p>
+          <h1>{t("Manage the event")}</h1>
+          <label htmlFor="admin-password">{t("Organiser password")}</label>
+          <input
+            id="admin-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <Feedback error={error} />
+          <button className="primary full" disabled={busy}>
+            {busy ? t("Signing in…") : t("Sign in")}
+          </button>
+        </form>
+      </div>
+    );
+  const raw = data?.data;
+  const submissions: Story[] = raw?.submissions
+    ? raw.submissions.map((s: any) => ({
+        id: s.id,
+        title: s.title,
+        prompt: s.prompt,
+        resultText: s.story,
+        participantName:
+          raw.participants.find((p: any) => p.id === s.participant_id)?.name ||
+          "",
+        judgingStatus: raw.judgements.find((j: any) => j.submission_id === s.id)
+          ?.status,
+        deleted: s.deleted,
+        legacy: s.legacy,
+        roundId: s.round_id,
+      }))
+    : raw?.rounds?.flatMap((r: any) => r.submissions) || [];
+  const jobs: any[] = raw?.jobs || [],
+    votes: any[] =
+      raw?.votes || raw?.rounds?.flatMap((r: any) => r.votes) || [];
+  return (
+    <div className="content admin">
+      <div className="page-title">
+        <div>
+          <p className="eyebrow">{t("Event control room")}</p>
+          <h1>{t("Organiser Dashboard")}</h1>
+          <RoundStatus round={data?.round || null} />
+        </div>
+        <button
+          disabled={busy}
+          onClick={async () => {
+            await action("logout");
+            setLogged(false);
+          }}
+        >
+          {t("Sign out")}{" "}
+        </button>
+      </div>
+      <Feedback error={error} />
+      <div className="stats">
+        {[
+          [t("Stories"), submissions.length],
+          [t("Votes"), votes.length],
+          [
+            t("AI jobs pending"),
+            jobs.filter((j) => !["ready", "failed"].includes(j.status)).length,
+          ],
+          [
+            t("Failed requests"),
+            jobs.filter((j) => j.status === "failed").length,
+          ],
+        ].map(([label, count]) => (
+          <div className="card" key={label}>
+            <span>{t(String(label))}</span>
+            <strong>{count}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="dashboard-grid">
+        <section className="card">
+          <h2>{t("Round controls")}</h2>
+          <p>
+            {t(
+              "Changes are checked by the database. Published results remain fixed.",
+            )}{" "}
+          </p>
+          <div className="actions">
+            {data?.transitions.map((state) => (
+              <button
+                key={state}
+                disabled={busy}
+                className="primary"
+                onClick={() =>
+                  action(
+                    "transition",
+                    { state },
+                    state === "RESULTS"
+                      ? t(
+                          "Publish final rankings? Voting will close and results become immutable.",
+                        )
+                      : t("Change the round to {state}?", {
+                          state: t(labels[state]),
+                        }),
+                  )
+                }
+              >
+                {
+                  {
+                    SUBMISSIONS_OPEN: t("Start / Open submissions"),
+                    SUBMISSIONS_CLOSED:
+                      data?.round.state === "VOTING"
+                        ? t("Close voting")
+                        : t("Close submissions"),
+                    VOTING: t("Open public voting"),
+                    RESULTS: t("Close voting & Publish results"),
+                    WAITING: t("Wait"),
+                  }[state]
+                }
+              </button>
+            ))}
+            {data?.round.state === "RESULTS" && (
+              <button
+                disabled={busy}
+                onClick={() => {
+                  const title = window.prompt(
+                    t("Title for the new round"),
+                    t("Prompt Olympics"),
+                  );
+                  if (title)
+                    void action(
+                      "new-round",
+                      { title },
+                      t(
+                        "Create a new round? All historical results are retained.",
+                      ),
+                    );
+                }}
+              >
+                {t("Create a new round")}{" "}
+              </button>
+            )}
           </div>
         </section>
-      </main>
-    ) : (
-      <main id="main-content" tabIndex={-1} className="content admin-panel">
-        <div className="page-title admin-header">
-          <div>
-            <span>🛡️ ADMIN</span>
-            <h1>Round {currentRound?.roundNumber ?? 1}</h1>
-          </div>
-          <div className="row small-row">
-            <button className="secondary" onClick={() => window.location.href = "/"}>Back to event</button>
-          </div>
-        </div>
-
-        <div className="dashboard-grid">
-          <div className="card admin-card compact-card">
-            <h3>Competition actions</h3>
-            <button className="secondary full" onClick={() => callAdmin("/api/admin/reset-votes")}>Reset votes</button>
-            <button className="secondary full" onClick={() => {
-              if (window.confirm("Delete all submissions and votes for this round?")) callAdmin("/api/admin/delete-all-submissions");
-            }}>Delete all submissions</button>
-            <button className="secondary full" onClick={() => {
-              const nextRound = window.prompt("Enter a new round name:", "Prompt Olympics");
-              if (nextRound) callAdmin(`/api/admin/start-new-round`, "POST");
-            }}>New round</button>
-            <button className="secondary full" onClick={() => {
-              if (window.confirm("Reset the entire competition and start a fresh round?")) callAdmin("/api/admin/reset-competition");
-            }}>Reset competition</button>
-          </div>
-
-          <div className="card admin-card compact-card">
-            <h3>Current state</h3>
-            <p><strong>State:</strong> {currentRound?.state ?? "WAITING"}</p>
-            <p><strong>Submissions:</strong> {currentRound?.submissions.length ?? 0}</p>
-            <p><strong>Votes:</strong> {currentRound?.votes.length ?? 0}</p>
-            <p><strong>Average:</strong> {currentRound?.leaderboard?.length ? currentRound.leaderboard[0].averageScore.toFixed(1) : "0.0"}</p>
-            <p><strong>Tie rule:</strong> higher average, then more votes, then alphabetical participant name.</p>
-          </div>
-        </div>
-
-        <div className="card admin-table">
-          <h3>Submission list</h3>
-          {!currentRound?.submissions.length ? <p className="sub">No submissions yet.</p> : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Participant</th>
-                  <th>Result</th>
-                  <th>Votes</th>
-                  <th>Average</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentRound.submissions.map((submission) => {
-                  const average = currentRound.votes.filter((vote) => vote.submissionId === submission.id).length
-                    ? currentRound.votes.filter((vote) => vote.submissionId === submission.id).reduce((sum, vote) => sum + Number(vote.overall ?? 0), 0) / currentRound.votes.filter((vote) => vote.submissionId === submission.id).length
-                    : 0;
-                  return <tr key={submission.id}>
-                    <td>{submission.participantName}</td>
-                    <td>{submission.resultText}</td>
-                    <td>{currentRound.votes.filter((vote) => vote.submissionId === submission.id).length}</td>
-                    <td>{average.toFixed(1)}</td>
-                    <td><button className="secondary small-button" onClick={() => {
-                      if (window.confirm(`Delete ${submission.participantName}'s submission and all its votes?`)) {
-                        callAdmin(`/api/admin/delete-submission/${submission.id}`);
-                      }
-                    }}>Delete</button></td>
-                  </tr>;
-                })}
-              </tbody>
-            </table>
+        <section className="card">
+          <h2>{t("Voting rules")}</h2>
+          <label htmlFor="minimum">{t("Minimum votes for awards")}</label>
+          <input
+            id="minimum"
+            type="number"
+            min={1}
+            max={1000}
+            value={minVotes}
+            onChange={(e) => setMinVotes(Number(e.target.value))}
+          />
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={strict}
+              onChange={(e) => setStrict(e.target.checked)}
+            />{" "}
+            {t("Require a one-use event voting code")}{" "}
+          </label>
+          <button
+            disabled={
+              busy ||
+              data?.round.state === "RESULTS" ||
+              data?.round.state === "VOTING"
+            }
+            onClick={() =>
+              action(
+                "settings",
+                { minVotes, strictCodes: strict },
+                t("Update voting rules for this round?"),
+              )
+            }
+          >
+            {t("Save rules")}{" "}
+          </button>
+          <p className="hint">
+            {t(
+              "Anonymous sessions are convenient. Codes provide stronger control. Neither can identify a person using an unrelated browser to submit stories.",
+            )}{" "}
+          </p>
+          <button
+            disabled={busy || data?.round.state === "RESULTS"}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const result = await api<{ codes: string[] }>(
+                  "/api/admin/codes",
+                  { count: 100 },
+                );
+                setCodes(result.codes);
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {t("Create 100 voting codes")}{" "}
+          </button>
+          {!!codes.length && (
+            <>
+              <p>
+                {t(
+                  "Copy and distribute privately. Each code can be claimed once.",
+                )}{" "}
+              </p>
+              <textarea
+                readOnly
+                aria-label={t("New event voting codes")}
+                value={codes.join("\n")}
+                rows={5}
+              />
+              <button
+                onClick={() =>
+                  navigator.clipboard
+                    .writeText(codes.join("\n"))
+                    .catch(() =>
+                      setError("Select and copy the codes manually."),
+                    )
+                }
+              >
+                {t("Copy codes")}{" "}
+              </button>
+            </>
           )}
+        </section>
+      </div>
+      <section className="card">
+        <h2>{t("Exports and event health")}</h2>
+        <div className="actions">
+          <a
+            className="button primary"
+            href={"/api/admin/results?language=" + getLanguage()}
+          >
+            {t("Export results CSV")}{" "}
+          </a>
+          <a className="button secondary" href="/api/admin/export">
+            {t("Download database backup")}{" "}
+          </a>
+          <button
+            disabled={busy}
+            onClick={() => load().catch((e) => setError(e.message))}
+          >
+            {t("Refresh status")}{" "}
+          </button>
         </div>
-      </main>
-    )}
-  </div>;
+        <p>
+          {t(
+            "Requests: {requests} · AI failures: {ai} · Database failures: {database}",
+            {
+              requests: data?.metrics.requests || 0,
+              ai: data?.metrics.aiFailure || 0,
+              database: data?.metrics.databaseFailure || 0,
+            },
+          )}
+        </p>
+        <p>
+          {t("Last leaderboard database refresh: {time}", {
+            time: data?.metrics.lastLeaderboardRefresh
+              ? new Date(data.metrics.lastLeaderboardRefresh).toLocaleString(
+                  getLocale(),
+                )
+              : t("No refresh yet"),
+          })}
+        </p>
+        <button
+          disabled={busy}
+          onClick={async () => {
+            try {
+              setHealth(await api("/api/ready"));
+              setError("");
+            } catch (e) {
+              setHealth(null);
+              setError((e as Error).message);
+            }
+          }}
+        >
+          {t("Check database readiness")}
+        </button>
+        {health && (
+          <p role="status">
+            {t("Database connected")} ·{" "}
+            {t(
+              health.geminiConfigured
+                ? "Story AI configured"
+                : "Story AI not configured",
+            )}
+          </p>
+        )}
+        <details>
+          <summary>{t("Round history")}</summary>
+          {(raw?.rounds || []).map((r: any) => (
+            <p key={r.id}>
+              {t("Round {number}: {title} · {state}", {
+                number: r.number || r.roundNumber,
+                title:
+                  r.title === "Prompt Olympics"
+                    ? t("Prompt Olympics")
+                    : r.title,
+                state: t(labels[r.state as RoundState]),
+              })}{" "}
+              ·{" "}
+              <a
+                href={"/leaderboard?round=" + encodeURIComponent(r.id)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("View stored rankings")}{" "}
+              </a>
+            </p>
+          ))}
+        </details>
+      </section>
+      <section>
+        <h2>{t("Review submissions")}</h2>
+        <div className="story-grid">
+          {submissions.map((s: any) => (
+            <article className="card" key={s.id}>
+              <p className="eyebrow">
+                {s.participantName} · {s.judgingStatus || "pending"}
+              </p>
+              <h3>{s.title}</h3>
+              <details>
+                <summary>{t("Read story and idea")}</summary>
+                <p>{s.prompt}</p>
+                <p className="story-text">{s.resultText}</p>
+              </details>
+              {s.roundId === data?.round.id && (
+                <div className="actions">
+                  <button
+                    disabled={
+                      busy || s.deleted || data?.round.state === "RESULTS"
+                    }
+                    onClick={() =>
+                      action(
+                        "delete",
+                        { submissionId: s.id },
+                        t(
+                          "Remove this story from public view? The original record and votes remain in the backup.",
+                        ),
+                      )
+                    }
+                  >
+                    {s.deleted ? t("Removed") : t("Remove story")}
+                  </button>
+                  {s.legacy &&
+                    s.judgingStatus === "pending" &&
+                    !jobs.some(
+                      (j) =>
+                        j.submission_id === s.id || j.submissionId === s.id,
+                    ) && (
+                      <button
+                        disabled={busy || data?.round.state === "RESULTS"}
+                        onClick={() =>
+                          action(
+                            "judge-historical",
+                            { submissionId: s.id },
+                            t(
+                              "Judge this historical story that has no stored score? This authorised operation is audited. Existing completed scores are preserved.",
+                            ),
+                          )
+                        }
+                      >
+                        {t("Judge unscored historical story")}{" "}
+                      </button>
+                    )}
+                  {s.judgingStatus === "failed" && (
+                    <button
+                      disabled={busy || data?.round.state === "RESULTS"}
+                      onClick={() =>
+                        action("retry-judge", { submissionId: s.id })
+                      }
+                    >
+                      {t("Retry AI judging")}{" "}
+                    </button>
+                  )}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+      <section className="card">
+        <h2>{t("Failed requests")}</h2>
+        {jobs
+          .filter((j) => j.status === "failed")
+          .map((j) => (
+            <p key={j.id}>
+              {j.input?.participantName} ·{" "}
+              {message(j.error || "AI request failed")} ·{" "}
+              {j.submissionId
+                ? t("Saved story; retry judging above.")
+                : t(
+                    "Story was not saved. Participant may create a new request.",
+                  )}
+            </p>
+          ))}
+        {!jobs.some((j) => j.status === "failed") && (
+          <p>{t("No failed requests.")}</p>
+        )}
+      </section>
+    </div>
+  );
 }
-
-const isAdminRoute = window.location.pathname === "/admin";
-createRoot(document.getElementById("root")!).render(isAdminRoute ? <AdminApp /> : <App />);
+createRoot(document.getElementById("root")!).render(<App />);

@@ -545,3 +545,5 @@ export function generateStory(
     }
   );
 }
+// Legacy offline experiment. Not imported by the competition UI or server.
+// Its heuristics must never be used as official generation or judging results.

@@ -1,102 +1,110 @@
-# Save Prompt Olympics stories in Supabase
+# Safe database migration and deployment
 
-The integration is ready in the code. Complete these steps to connect your own Supabase project. No extra npm package is required: the Express server uses Supabase's REST API.
+Use a separate Supabase test project first. These operations have not been applied to any hosted database by this upgrade.
 
-## 1. Back up existing stories before redeploying Render
+## Prepare credentials locally
 
-If you want to keep the current stories, run this in PowerShell now:
-
-```powershell
-Invoke-RestMethod 'https://promptolympics.onrender.com/api/competition' |
-  ConvertTo-Json -Depth 100 |
-  Set-Content -Encoding UTF8 'prompt-olympics-backup.json'
-```
-
-Check that the file contains your stories under `competition.rounds`. Keep this file private: it includes voting records. Do this before a redeploy because the current local JSON file may disappear when Render replaces the server. If you want to start empty, skip this step and step 5.
-
-## 2. Create your Supabase project
-
-1. Sign in at https://supabase.com/dashboard.
-2. Choose **New project**, select your organization, and name it `Prompt Olympics`.
-3. Set a strong database password and choose a region near your audience, such as Singapore when available.
-4. Wait for the project to finish setting up.
-
-## 3. Create the database table
-
-1. In the project dashboard, open **SQL Editor** and create a new query.
-2. Open [supabase/schema.sql](supabase/schema.sql) in this project.
-3. Copy the entire file into the SQL Editor and select **Run**.
-4. Open **Table Editor** and confirm that `prompt_olympics_state` exists.
-
-The SQL enables Row Level Security and prevents browser users from accessing the table directly. Keep these protections enabled. All reads and writes go through your Express server.
-
-## 4. Get the connection details
-
-Use the project's **Connect** dialog or API settings to find the **Project URL**. It looks like `https://YOUR_PROJECT_REF.supabase.co`.
-
-In **Settings → API Keys**, create or copy a **secret key** (`sb_secret_...`). Use the secret key, not the publishable/anon key and not the database password. A legacy `service_role` key is also supported through `SUPABASE_SERVICE_ROLE_KEY`.
-
-Never put the secret key in `src/`, a `VITE_` variable, a Git commit, or a message. Only the server should receive it.
-
-## 5. Optional: import your existing stories
-
-Before directing the live site to Supabase, import the backup from step 1 from your computer. In PowerShell, from this project folder:
+Use Node 22.18 or newer. In PowerShell from the repository, set `SUPABASE_URL`. Read your **server secret key** from Supabase Settings → API Keys into the terminal, never chat or source files:
 
 ```powershell
 $env:SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co'
-$env:SUPABASE_SECRET_KEY = Read-Host 'Paste your Supabase secret key' -MaskInput
-node scripts/import-supabase.js prompt-olympics-backup.json
-```
-
-`-MaskInput` requires PowerShell 7.1+. On Windows PowerShell 5, use this instead of the second line:
-
-```powershell
-$secret = Read-Host 'Paste your Supabase secret key' -AsSecureString
+$secret = Read-Host 'Server secret key' -AsSecureString
 $env:SUPABASE_SECRET_KEY = [System.Net.NetworkCredential]::new('', $secret).Password
 ```
 
-The import accepts either the API backup above or an existing `data/competition.json`. It preserves stories, votes, scores, and round history. It refuses to overwrite an occupied database or repeat a completed import. Close the terminal when finished to clear the session variables.
+Modern `sb_secret_...` keys and legacy `service_role` JWTs are supported. Publishable/anon keys are rejected by the runtime. Never prefix server credentials with `VITE_`.
 
-Keep voting/submissions paused during the final backup and import, or do this when nobody is using the site. New votes made on the old server after your backup are not automatically copied.
+## Back up and rehearse
 
-## 6. Configure Render
+1. Export the raw legacy database before changing anything:
 
-Open your Render web service, then **Environment**, and add:
+   ```powershell
+   node scripts/export-legacy.mjs backups/legacy-before-maintenance.json
+   ```
 
-| Variable | Value |
-| --- | --- |
-| `SUPABASE_URL` | Your Supabase Project URL |
-| `SUPABASE_SECRET_KEY` | Your `sb_secret_...` server key |
-| `ADMIN_PASSWORD` | A private password for the app's `/admin` page |
+   For file storage, copy the original `data/competition.json` instead. The public endpoint is no longer a database-backup endpoint.
 
-Keep your existing `GEMINI_API_KEY` and any `GEMINI_MODEL` setting. Supabase stores stories; Gemini still writes them.
+2. Keep a second encrypted/private copy off the application server. Backups include participant nicknames and historical voting identifiers.
+3. In the **test project SQL Editor**, run the complete files in order:
+   - `supabase/migrations/001_normalized.sql`
+   - `supabase/migrations/002_legacy_import.sql`
+4. Dry-run the backup locally:
 
-Save the settings and deploy the updated code. The build command stays `npm install --include=dev && npm run build`, and the start command stays `npm start`. For a Blueprint setup, the variables are also listed in `render.yaml` for you to fill in.
+   ```powershell
+   node scripts/import-supabase.js backups/legacy-before-maintenance.json --dry-run
+   ```
 
-## 7. Confirm the connection
+   If a round is `OPEN`, rerun with an explicit phase, for example `--legacy-open-state=VOTING`. `OPEN` formerly allowed simultaneous submissions and voting; the new lifecycle does not. Decide with the organiser when both features were in use.
 
-1. Open `https://promptolympics.onrender.com/api/health`.
-2. Look for `"storage": "supabase"` and `"storageConnected": true`.
-3. Create a story in the app and confirm it appears in Read stories.
-4. Open Supabase's Table Editor. There should be one `prompt-olympics` row in `prompt_olympics_state`. Its `state` JSON contains `rounds`, each with `submissions` and `votes`.
-5. Restart/redeploy the Render service, then refresh the app. The story should remain.
+5. The script detects duplicate/missing IDs, orphaned or malformed votes, conflicting identities, unknown score scales, invalid timestamps and missing final snapshots. Resolve inconsistencies in a **copy** of the backup and retain the untouched original. It does not discard votes to make an import pass. Historical `RESULTS` requires a verified snapshot; importing an unverified final ranking is intentionally blocked.
+6. Review the counts and warnings. A missing historical AI score remains pending and cannot be treated as an official completed judging result. No historical story is silently judged.
 
-If health says `"storage": "local"`, the running server has no Supabase configuration. If it returns HTTP 503, check the project URL, secret key, table setup, and whether your Supabase project is running. A Supabase failure never silently switches the app back to local storage.
+## Production cutover with no legacy writes
 
-## Local development
+1. Disable Render automatic deploys. Choose a maintenance period and announce it. Take the preliminary backup above.
+2. If the old server uses Supabase, run `supabase/maintenance/freeze-legacy.sql` in its SQL Editor. The trigger rejects old writes from **every** running instance. Do not remove the old table.
+3. Stop/suspend all old app instances and workers. For file storage, stop the process before taking the final file copy. A backup while people are still voting is not a safe cutover.
+4. Export again to a new filename after the freeze:
 
-Use Node.js 22.18+ for all the project's tests. Set the environment variables as above, then run `npm run build` and `npm start`. For Gemini generation, also set `GEMINI_API_KEY` in that terminal. Visit `http://localhost:10000`.
+   ```powershell
+   node scripts/export-legacy.mjs backups/legacy-final.json
+   node scripts/import-supabase.js backups/legacy-final.json --dry-run
+   ```
 
-`.env.example` documents the variables. `npm start` does not automatically load `.env`; either set the variables in your terminal or run `node --env-file=.env server.js` on Node.js 22.18+. The Vite development server alone does not run the Express API.
+5. In the target project SQL Editor, run migrations `001_normalized.sql` then `002_legacy_import.sql`. They are additive and never rewrite/delete the legacy table. All new tables have RLS enabled and no browser permissions; only server service-role access is granted. The public RPCs are explicitly denied to `anon`, `authenticated` and `PUBLIC`.
+6. Import the frozen backup:
 
-With no Supabase variables, the app still uses `data/competition.json` for local development. Setting only one of the two required variables causes startup to fail with a configuration message.
+   ```powershell
+   node scripts/import-supabase.js backups/legacy-final.json --apply --maintenance-confirmed
+   ```
 
-## Storage design and checks
+   Include the same `--legacy-open-state=...` option if required. Each run first copies its input into `backups/`. The import runs in one transaction, validates database counts, refuses occupied targets, and returns the existing result when the exact backup is rerun. A different backup after a completed import is rejected.
 
-This version stores the whole competition in one JSONB row, preserving the existing app's data model and round/admin features. Each save checks a version number; if another visitor saves first, the server reloads and retries rather than overwriting their story or vote. The row is created automatically when first accessed.
+7. Verify SQL counts match the dry run:
 
-This is suited to a small event. The complete competition is read and written for each change, so a large or high-traffic service should move to separate submissions/votes tables and database transactions. Stories are in the database, not Supabase Storage (which is for files).
+   ```sql
+   select 'rounds' as records, count(*) from public.po_rounds
+   union all select 'participants', count(*) from public.po_participants
+   union all select 'submissions', count(*) from public.po_submissions
+   union all select 'judgements', count(*) from public.po_judgements
+   union all select 'votes', count(*) from public.po_votes;
+   select current_round_id from public.po_competitions;
+   ```
 
-Run `node --test competitionRepository.test.js competitionStore.test.js geminiConfig.test.js`. These tests use a simulated Supabase API to check persistence, concurrent saves, duplicate votes, and failure handling. A real-project connection must still be verified with step 7.
+8. Deploy the new code and configure Render variables from `.env.example`. `NODE_ENV=production` requires Supabase, a private organiser password and session secret. Start with one paid, always-on service for the event. `render.yaml` disables auto-deploy and provides a readiness health path.
+9. Check `/api/ready`: HTTP 200, `storage: "supabase"`, `storageConnected: true`. `/api/health` only confirms that the app process is alive and reports AI configuration; it is not a provider/quota check.
+10. Verify round phase, old stories, historic numeric scores, vote counts, then complete `LIVE_EVENT_CHECKLIST.md` before reopening access. Keep the legacy write-block trigger in place after cutover.
 
-Official references: [API keys](https://supabase.com/docs/guides/getting-started/api-keys), [SQL Editor and tables](https://supabase.com/docs/guides/database/tables), [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security).
+## New tables
+
+`po_competitions`, `po_rounds`, `po_participants`, `po_submissions`, `po_judgements`, `po_votes`, `po_jobs`, `po_idempotency`, `po_audit`, `po_codes`, `po_limits`, `po_admin_sessions`. Votes have independent IDs, foreign keys to their round/story and unique story/identity and operation/identity constraints. Indexed PostgreSQL aggregation returns scores without downloading voter records. Final snapshots live on rounds.
+
+Legacy participant/session strings are hashed into a separate legacy identity namespace for integrity and privacy. Old browser credentials cannot be trusted as signed sessions. The untouched raw record is also retained in `legacy` columns for traceability. Returning anonymous visitors receive a new server-issued identity; prior anonymous ownership/vote identity cannot be proven automatically. For strict events, use distributed one-use codes and rehearse their use.
+
+## Backups and recovery
+
+The organiser dashboard's **Download database backup** exports all normalized competition, job, vote, score, audit and code records. Keep it private and encrypted. This JSON is for inspection/reconciliation; it is not accepted by the legacy importer. For a restorable PostgreSQL backup, use your Supabase project's database backup facility or a secured `pg_dump` connection:
+
+```powershell
+pg_dump --dbname=$env:DATABASE_URL --format=custom --file=prompt-olympics-private.dump
+```
+
+Do not print `DATABASE_URL` or commit the dump. Restore first to a **new, dedicated** project using `pg_restore --dbname=$env:RESTORE_DATABASE_URL --no-owner --no-acl prompt-olympics-private.dump`, then reapply role grants from migration 001 and verify counts. Role availability and Supabase-managed schemas require an operator to review the restore output; test this procedure before the event.
+
+## Rollback
+
+Keep maintenance on. Take a fresh normalized backup first. Before returning to the legacy release, run:
+
+```sql
+select count(*) as new_votes from public.po_votes where legacy is null;
+select count(*) as new_stories from public.po_submissions where legacy is null;
+select count(*) as new_jobs from public.po_jobs;
+```
+
+Only when all three are zero and no new round/rule/score changes need preservation may you redeploy the previous release, restore its old environment configuration, and unfreeze legacy writes:
+
+```sql
+drop trigger if exists po_legacy_maintenance on public.prompt_olympics_state;
+```
+
+Verify the old application's stories/counts before reopening. Leave all new tables intact for investigation. If the new app accepted any stories/votes, **do not downgrade to the stale legacy JSON**. Keep maintenance active and repair the new release or restore its PostgreSQL backup to a dedicated project. Backporting new records requires reviewed reconciliation to avoid losing confirmed votes.

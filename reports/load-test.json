@@ -1,0 +1,59 @@
+{
+  "environment": "Disposable PGlite PostgreSQL, loopback HTTP, mocked Gemini. PGlite serializes SQL; this is not Supabase/Render multi-connection capacity evidence.",
+  "thresholds": {
+    "voteP95Ms": 2000,
+    "leaderboardP95Ms": 2000,
+    "lostConfirmedVotes": 0,
+    "duplicateVoteRecords": 0,
+    "unexpectedErrors": 0
+  },
+  "scenarios": {
+    "generation100": {
+      "accepted": 100,
+      "quotaFailuresInjected": 4,
+      "completed": 100
+    },
+    "voting500": {
+      "acknowledged": 500,
+      "durationMs": 3593.2614000000003
+    },
+    "duplicate100": {
+      "additionalRecords": 0
+    },
+    "leaderboard200": {
+      "completed": 200
+    },
+    "databaseOutage": {
+      "rejected": 1,
+      "recovered": 1
+    },
+    "restart": {
+      "confirmedVotesRetained": 501
+    },
+    "closeDuringVoting": {
+      "acceptedBeforeClose": 0,
+      "rejected": 51
+    }
+  },
+  "successfulVoteCount": 501,
+  "lostConfirmedVotes": 0,
+  "duplicateVoteRecords": 0,
+  "voteLatency": {
+    "requests": 653,
+    "averageMs": 354.748102143951,
+    "p95Ms": 497.6226000000006
+  },
+  "leaderboardLatency": {
+    "requests": 201,
+    "averageMs": 90.31270945273631,
+    "p95Ms": 141.96860000000015
+  },
+  "elapsedSeconds": 10.958145499999999,
+  "requestsPerSecond": 87.0585264632597,
+  "expectedRejectionRate": 0.05450733752620545,
+  "unexpectedErrors": 0,
+  "peakRssMB": 480.8046875,
+  "cpuMs": 2859,
+  "queueRemaining": 0,
+  "passed": true
+}

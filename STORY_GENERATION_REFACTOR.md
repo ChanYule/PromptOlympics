@@ -1,5 +1,7 @@
 # Story Generation Refactor - Implementation Summary
 
+Historical documentation for the retained offline experiment. The live competition now uses server-side Gemini generation and judging as documented in README.md and GEMINI_SETUP.md; these template/heuristic functions do not supply official results.
+
 ## Overview
 
 This refactoring replaces the hardcoded template-based story generation system with a **premise-driven multi-step pipeline** that produces coherent, on-topic comedy stories.

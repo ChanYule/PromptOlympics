@@ -1,15 +1,34 @@
 services:
   - type: web
     name: prompt-olympics
-    env: node
-    plan: free
-    buildCommand: npm install --include=dev && npm run build
+    runtime: node
+    plan: 0.5c-512mb
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
-    autoDeploy: true
+    healthCheckPath: /api/ready
+    autoDeployTrigger: off
     envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.22.0
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
       - key: ADMIN_PASSWORD
         sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_ORIGIN
+        sync: false
+      - key: AI_CONCURRENCY
+        value: 4
+      - key: MAX_QUEUE
+        value: 150
+      - key: DAILY_GENERATION_BUDGET
+        value: 1000

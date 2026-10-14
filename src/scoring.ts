@@ -1,25 +1,11 @@
-export type HumanVote = { funny: number; creative: number; surprise: number; fit: number };
-type ScorableStory = { ai: { overall: number }; votes: HumanVote[] };
-
+﻿// Official scoring is calculated by the server from committed database records.
 export const AI_WEIGHT = 0.5;
-export const HUMAN_WEIGHT = 0.5;
-
-// Existing saved AI scores use a ten-point scale. Convert at the boundary so
-// older stories and new stories are displayed and combined consistently.
-export function aiScore(score: number) {
-  return score / 2;
-}
-
-export function humanScore(story: ScorableStory): number | null {
-  if (!story.votes.length) return null;
-  const average = story.votes.reduce((sum, vote) =>
-    sum + (vote.funny + vote.creative + vote.surprise + vote.fit) / 4, 0) / story.votes.length;
-  return average;
-}
-
-export function finalScore(story: ScorableStory) {
-  const human = humanScore(story);
-  // Until a human votes, show the AI score as a clearly labelled provisional score.
-  const ai = aiScore(story.ai.overall);
-  return human === null ? ai : ai * AI_WEIGHT + human * HUMAN_WEIGHT;
+export const PUBLIC_WEIGHT = 0.5;
+export function combinedScore(
+  ai: number | null,
+  publicAverage: number | null,
+): number | null {
+  return ai === null || publicAverage === null
+    ? null
+    : ai * AI_WEIGHT + publicAverage * PUBLIC_WEIGHT;
 }

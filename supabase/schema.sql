@@ -1,4 +1,5 @@
--- Run in your Supabase project's SQL Editor.
+-- Legacy schema retained for rollback/reference only.
+-- New installations: run migrations/001_normalized.sql and 002_legacy_import.sql.
 create table if not exists public.prompt_olympics_state (
   id text primary key check (id = 'prompt-olympics'),
   state jsonb not null check (jsonb_typeof(state) = 'object'),
