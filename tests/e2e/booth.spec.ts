@@ -11,9 +11,7 @@ test("three consecutive booth participants retain separate stories, scores and v
   await page.getByLabel("Organiser password").fill("browser-test-password-16");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   page.on("dialog", (d) => d.accept());
-  await page
-    .getByLabel("Booth mode: allow voting while story creation is open")
-    .check();
+
   await page.getByLabel("Allow participants to rate their own stories").check();
   await page.getByLabel("Minimum votes for awards").fill("1");
   await page.getByRole("button", { name: "Save rules" }).click();
@@ -63,28 +61,39 @@ test("three consecutive booth participants retain separate stories, scores and v
     ).toBeVisible();
     stories.push(await page.locator(".story-text").innerText());
     await expect(page.getByText("AI score:")).toBeVisible();
+    await expect(page.getByRole("radio")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "How funny was your story?" }),
+    ).toHaveCount(0);
     await page
-      .getByRole("radio", { name: `Rate ${rating} out of 5`, exact: true })
+      .getByRole("link", { name: "Continue to Read and Vote", exact: true })
+      .click();
+    const card = page.getByRole("article", { name: title, exact: true });
+    await card
+      .locator(".stars input")
+      .nth(rating - 1)
       .check();
-    await page
-      .getByRole("button", { name: "Submit My Vote", exact: true })
+    await card
+      .getByRole("button", { name: "Submit Vote", exact: true })
       .dblclick();
     await expect(
-      page.getByText("Thank you! Your vote has been recorded.", {
+      page.getByText("Your vote is recorded. Thank you!", {
         exact: true,
       }),
     ).toBeVisible();
-    await expect(
-      page.getByText(`Combined score: ${combined} / 5`, { exact: true }),
-    ).toBeVisible();
+    const live = await (await page.request.get("/api/leaderboard")).json();
+    expect(
+      live.entries
+        .find((e: { participantName: string }) => e.participantName === name)
+        .finalScore.toFixed(2),
+    ).toBe(combined);
     await page.reload();
+    await expect(card).toBeVisible();
     await expect(
-      page.getByText("Thank you! Your vote has been recorded.", {
-        exact: true,
-      }),
+      page.getByText(`Your ${rating}-star vote is recorded.`, { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Submit My Vote", exact: true }),
+      card.getByRole("button", { name: "Submit Vote", exact: true }),
     ).toHaveCount(0);
     await page.setViewportSize({ width: 375, height: 812 });
     expect(
@@ -144,9 +153,7 @@ test("uncertain booth votes and participant resets reconcile without duplicate r
   await page.getByLabel("Organiser password").fill("browser-test-password-16");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   page.on("dialog", (d) => d.accept());
-  await page
-    .getByLabel("Booth mode: allow voting while story creation is open")
-    .check();
+
   await page.getByRole("button", { name: "Save rules", exact: true }).click();
   await page
     .getByRole("button", { name: "Start / Open submissions", exact: true })
@@ -176,9 +183,14 @@ test("uncertain booth votes and participant resets reconcile without duplicate r
   await expect(
     page.getByRole("heading", { name: "Principal Paws", exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("radio")).toHaveCount(0);
   await page
-    .getByRole("radio", { name: "Rate 5 out of 5", exact: true })
-    .check();
+    .getByRole("link", { name: "Continue to Read and Vote", exact: true })
+    .click();
+  await expect(
+    page.getByRole("article", { name: "Principal Paws", exact: true }),
+  ).toBeVisible();
+  await page.locator(".stars input").nth(4).check();
   let lostVote = false;
   await page.route("**/api/votes", async (route) => {
     if (!lostVote) {
@@ -187,9 +199,7 @@ test("uncertain booth votes and participant resets reconcile without duplicate r
       await route.abort("failed");
     } else await route.continue();
   });
-  await page
-    .getByRole("button", { name: "Submit My Vote", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Submit Vote", exact: true }).click();
   await expect(
     page.getByRole("button", {
       name: "Check and confirm my vote",
@@ -206,7 +216,7 @@ test("uncertain booth votes and participant resets reconcile without duplicate r
     .getByRole("button", { name: "Check and confirm my vote", exact: true })
     .click();
   await expect(
-    page.getByText("Thank you! Your vote has been recorded.", { exact: true }),
+    page.getByText("Your vote is recorded. Thank you!", { exact: true }),
   ).toBeVisible();
   let lostReset = false;
   await page.route("**/api/finish-participant", async (route) => {

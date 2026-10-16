@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -147,16 +147,15 @@ test("booth voting before judging, independent mode, closure and safe participan
       state: "SUBMISSIONS_CLOSED",
       actor: "admin",
     });
-    await assert.rejects(
-      repo.call("vote", {
-        ...payload,
-        sessionId: "third",
-        authorId: "third",
-        submissionId: other,
-        idempotencyKey: "closed",
-      }),
-      /Voting is closed/,
-    );
+    const continuedVote = await repo.call("vote", {
+      ...payload,
+      sessionId: "third",
+      authorId: "third",
+      submissionId: other,
+      id: randomUUID(),
+      idempotencyKey: "after-submissions-close",
+    });
+    assert.equal(continuedVote.recorded, true);
   } finally {
     await repo.db.close();
   }
@@ -288,6 +287,73 @@ test("judging timeout preserves the saved story and vote and participant retry r
     assert.equal(entry.aiScore, 4);
     assert.equal(entry.voteCount, 1);
     assert.equal(entry.finalScore, 4.5);
+  } finally {
+    await repo.db.close();
+  }
+});
+
+test("voting is always open during creation and after submissions close, without booth settings or a voting transition", async () => {
+  const repo = await database();
+  try {
+    await repo.call("settings", {
+      minVotes: 1,
+      strictCodes: false,
+      boothMode: false,
+      allowSelfVotes: true,
+      actor: "admin",
+    });
+    await repo.call("transition", {
+      state: "SUBMISSIONS_OPEN",
+      actor: "admin",
+    });
+    const id = await saved(repo, "author");
+    await repo.call("vote", {
+      sessionId: "reader-a",
+      id: randomUUID(),
+      submissionId: id,
+      rating: 5,
+      idempotencyKey: "during-creation",
+    });
+    await repo.call("transition", {
+      state: "SUBMISSIONS_CLOSED",
+      actor: "admin",
+    });
+    await repo.call("vote", {
+      sessionId: "reader-b",
+      id: randomUUID(),
+      submissionId: id,
+      rating: 4,
+      idempotencyKey: "after-creation",
+    });
+    const claim = await repo.call("claim", {
+      concurrency: 6,
+      leaseSeconds: 120,
+      token: "judge",
+    });
+    await repo.call("judged", {
+      jobId: id,
+      token: claim.leaseToken,
+      score: {
+        humour: 4,
+        originality: 4,
+        relevance: 4,
+        model: "test",
+        rubric: "v2",
+        explanation: "Test",
+      },
+    });
+    await repo.call("transition", { state: "RESULTS", actor: "admin" });
+    assert.equal((await repo.call("leaderboard")).entries[0].voteCount, 2);
+    await assert.rejects(
+      repo.call("vote", {
+        sessionId: "reader-c",
+        id: randomUUID(),
+        submissionId: id,
+        rating: 3,
+        idempotencyKey: "after-results",
+      }),
+      /Voting is closed/,
+    );
   } finally {
     await repo.db.close();
   }

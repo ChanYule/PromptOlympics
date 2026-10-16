@@ -1,3 +1,5 @@
+> Workflow update: the inline rating flow described below is superseded by [VOTING_FLOW.md](VOTING_FLOW.md). The generated-story screen now links to Read and Vote. Migration 005 makes voting automatic through creation and judging; its instructions replace the earlier booth-mode checkbox and migration-004-only deployment instructions. The prior audit and test evidence below are retained for reference.
+
 # Prompt Olympics booth audit and verification
 
 Assessment: **Ready for rehearsal**. Production deployment, live Gemini quality/latency, and an event rehearsal are still required before opening to the public. This work did not deploy code, migrate a hosted database, or modify live competition records.

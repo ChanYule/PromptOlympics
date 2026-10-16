@@ -169,7 +169,7 @@ export function createLocalRepository(filename) {
       return {};
     }
     if (action === "health")
-      return { ok: true, storageConnected: true, schemaVersion: 4 };
+      return { ok: true, storageConnected: true, schemaVersion: 5 };
     if (action === "limit") {
       store.limits = store.limits.filter((l) => l.expiresAt > now);
       let l = store.limits.find((l) => l.key === p.key);

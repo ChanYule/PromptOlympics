@@ -1,4 +1,4 @@
-﻿import path from "node:path";
+import path from "node:path";
 import { createLocalRepository } from "./localRepository.js";
 import { DomainError } from "./competitionStore.js";
 export class StorageError extends Error {
@@ -43,6 +43,36 @@ export function createCompetitionRepository({
   }
   return {
     kind: "supabase",
+    async leaderboardStories(ids) {
+      const stories = new Map();
+      try {
+        // Only published leaderboard entry IDs; bounded GET batches and public fields.
+        const unique = [...new Set(ids)];
+        for (let start = 0; start < unique.length; start += 40) {
+          const batch = unique.slice(start, start + 40);
+          const url = new URL(base.origin + "/rest/v1/po_submissions");
+          url.searchParams.set("select", "id,story");
+          url.searchParams.set(
+            "id",
+            "in.(" + batch.map((id) => JSON.stringify(id)).join(",") + ")",
+          );
+          url.searchParams.set("limit", String(batch.length));
+          const response = await fetchImpl(url.toString(), {
+            headers,
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!response.ok) throw new StorageError();
+          const rows = await response.json();
+          if (!Array.isArray(rows)) throw new StorageError();
+          for (const row of rows)
+            if (batch.includes(row.id) && typeof row.story === "string")
+              stories.set(row.id, row.story);
+        }
+        return stories;
+      } catch {
+        throw new StorageError();
+      }
+    },
     async call(action, payload = {}) {
       let data;
       try {

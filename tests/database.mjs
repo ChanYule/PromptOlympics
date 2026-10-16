@@ -27,6 +27,15 @@ export async function database() {
       "utf8",
     ),
   );
+  await db.exec(
+    fs.readFileSync(
+      new URL(
+        "../supabase/migrations/005_always_open_voting.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
   return {
     db,
     kind: "postgres-test",

@@ -74,7 +74,7 @@ test("English/Chinese switching covers every page, preserves drafts and ratings,
   ).toEqual([]);
   round.state = "VOTING";
   await page.goto("/vote");
-  await page.getByRole("button", { name: /测试参赛者.*清淡到关灯/ }).click();
+
   await page.getByLabel("5 星：非常喜欢").check();
   await page.getByRole("button", { name: "English", exact: true }).click();
   await expect(page.getByLabel("5 stars: Loved it")).toBeChecked();

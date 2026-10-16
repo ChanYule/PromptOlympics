@@ -258,7 +258,7 @@ try {
         confirmed.push(result.data.id);
       } else assert.equal(result.status, 409);
     }),
-    repo.call("transition", { state: "SUBMISSIONS_CLOSED", actor: "test" }),
+    repo.call("transition", { state: "RESULTS", actor: "test" }),
   ]);
   const late = await request(
     await client(),

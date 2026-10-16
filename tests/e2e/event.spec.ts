@@ -76,27 +76,25 @@ test("complete live event, response-loss recovery, polling, final results and re
     .click();
   await expect(
     admin.getByRole("button", { name: "Open public voting" }),
-  ).toBeVisible();
-  await admin.getByRole("button", { name: "Open public voting" }).click();
+  ).toHaveCount(0);
   await expect(admin.locator(".round-status")).toContainText(
-    "Public voting is open",
+    "Story creation is closed",
   );
   await author.goto("/vote");
-  await author
-    .getByRole("button", { name: /Alice.*The Unlikely Chef/ })
-    .first()
-    .click();
-  await expect(author.getByLabel("5 stars: Loved it")).toBeEnabled();
+  await expect(
+    author.getByRole("article").first().getByLabel("5 stars: Loved it"),
+  ).toBeEnabled();
   await voter.goto("/vote");
-  await voter
-    .getByRole("button", { name: /Alice.*The Unlikely Chef/ })
-    .first()
-    .tap();
-  await voter.getByLabel("5 stars: Loved it").tap();
-  await voter.getByLabel("5 stars: Loved it").press("ArrowLeft");
-  await expect(voter.getByLabel("4 stars: Funny")).toBeChecked();
-  await voter.getByLabel("4 stars: Funny").press("ArrowRight");
-  await expect(voter.getByLabel("5 stars: Loved it")).toBeChecked();
+  const firstCard = voter.getByRole("article").nth(0),
+    secondCard = voter.getByRole("article").nth(1);
+  await expect(firstCard.locator(".story-text")).toHaveText(
+    /bright ideas still need soup/,
+  );
+  await firstCard.getByLabel("5 stars: Loved it").tap();
+  await firstCard.getByLabel("5 stars: Loved it").press("ArrowLeft");
+  await expect(firstCard.getByLabel("4 stars: Funny")).toBeChecked();
+  await firstCard.getByLabel("4 stars: Funny").press("ArrowRight");
+  await expect(firstCard.getByLabel("5 stars: Loved it")).toBeChecked();
   expect(
     (
       await new AxeBuilder({ page: voter })
@@ -112,35 +110,36 @@ test("complete live event, response-loss recovery, polling, final results and re
       await route.abort("failed");
     } else await route.continue();
   });
-  await voter.getByRole("button", { name: "Submit Vote" }).click();
+  await firstCard
+    .getByRole("button", { name: "Submit Vote", exact: true })
+    .click();
   await expect(
-    voter.getByRole("button", { name: "Check and confirm my vote" }),
+    firstCard.getByRole("button", { name: "Check and confirm my vote" }),
   ).toBeVisible();
-  await voter
+  await firstCard
     .getByRole("button", { name: "Check and confirm my vote" })
     .click();
   await expect(
-    voter.getByText("Your vote is recorded. Thank you!"),
+    firstCard.getByText("Your vote is recorded. Thank you!", { exact: true }),
   ).toBeVisible();
-  await voter.getByRole("button", { name: "Read Next Story" }).click();
-  await voter.getByLabel("4 stars: Funny").check();
-  await voter.getByRole("button", { name: "Submit Vote" }).click();
+  await secondCard.getByLabel("4 stars: Funny").check();
+  await secondCard
+    .getByRole("button", { name: "Submit Vote", exact: true })
+    .click();
   await expect(
-    voter.getByText("Your vote is recorded. Thank you!"),
+    secondCard.getByText("Your vote is recorded. Thank you!", { exact: true }),
   ).toBeVisible();
   await voter.getByRole("button", { name: "Next voter", exact: true }).click();
   await expect(
     voter.getByText("Ready for the next voter.", { exact: true }),
   ).toBeVisible();
-  await voter
-    .getByRole("button", { name: /Alice.*The Unlikely Chef/ })
-    .first()
+  await expect(firstCard.getByLabel("5 stars: Loved it")).toBeEnabled();
+  await firstCard.getByLabel("5 stars: Loved it").check();
+  await firstCard
+    .getByRole("button", { name: "Submit Vote", exact: true })
     .click();
-  await expect(voter.getByLabel("5 stars: Loved it")).toBeEnabled();
-  await voter.getByLabel("5 stars: Loved it").check();
-  await voter.getByRole("button", { name: "Submit Vote", exact: true }).click();
   await expect(
-    voter.getByText("Your vote is recorded. Thank you!"),
+    firstCard.getByText("Your vote is recorded. Thank you!", { exact: true }),
   ).toBeVisible();
   await voter.clock.install();
   await voter.goto("/leaderboard");

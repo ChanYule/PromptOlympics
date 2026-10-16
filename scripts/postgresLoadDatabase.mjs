@@ -29,6 +29,7 @@ export async function postgresLoadDatabase() {
     for (const file of [
       "003_shared_device_voting.sql",
       "004_booth_sessions.sql",
+      "005_always_open_voting.sql",
     ])
       await pool.query(
         fs.readFileSync(

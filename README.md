@@ -1,5 +1,7 @@
 # Prompt Olympics
 
+Current participant workflow: see [VOTING_FLOW.md](VOTING_FLOW.md). Stories link to the voting page; voting stays open automatically from submissions opening until final results. Migration 005 is required for this version.
+
 A React 19 / TypeScript / Vite frontend with Express, Supabase PostgreSQL and server-side Google Gemini. Designed for simple story creation, independent public voting, and a silently refreshing competition leaderboard.
 
 Routes: `/`, `/play`, `/vote`, `/leaderboard`, `/admin`.

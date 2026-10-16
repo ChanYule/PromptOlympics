@@ -1,4 +1,22 @@
 export const zh: Record<string, string> = {
+  "Stories on the leaderboard": "排行榜上的故事",
+  "Story spotlight": "故事展示",
+  "Previous story": "上一个故事",
+  "Next story": "下一个故事",
+  "Resume story rotation": "继续轮播故事",
+  "Pause story rotation": "暂停轮播故事",
+  "Story {number} of {count}": "第 {number} 个故事，共 {count} 个",
+  "Rank {rank} · A story by {name}": "第 {rank} 名 · 作者：{name}",
+  "Story text is unavailable for this entry.": "暂时无法显示这个故事的正文。",
+  "AI {ai} · Public {public} · Combined {combined} / 5":
+    "AI {ai} · 公众 {public} · 综合 {combined} / 5",
+  "Read the full stories below and give each one a rating from 1 to 5 stars.":
+    "阅读下方的完整故事，并为每个故事评选 1 至 5 星。",
+  "Rate stories here, then choose Finish and Start Next Participant before handing over this device.":
+    "请在这里为故事评分。交出设备前，请点击“完成并交给下一位参与者”。",
+  "Continue to Read and Vote": "前往阅读与投票",
+  "Voting stays open while stories are being created and until final results are published.":
+    "故事创作期间也可以投票，投票将持续开放至最终成绩公布。",
   "50% AI + 50% public average. Public votes required for award eligibility: {count}. Ties: public score, AI score, vote count, then story ID.":
     "AI 评分占 50%，公众平均评分占 50%。获奖所需公众票数：{count}。同分时依次比较公众评分、AI 评分、票数，最后按故事编号排序。",
   "Generate My Story": "生成我的故事",
@@ -290,6 +308,8 @@ export const zh: Record<string, string> = {
     "请输入 {min} 至 {max} 之间的数字。",
 };
 export const errorZh: Record<string, string> = {
+  "Database upgrade required. Ask an organiser to apply migration 005.":
+    "数据库需要升级，请联系主办人员执行第 005 号迁移脚本。",
   "Database upgrade required. Ask an organiser to apply migration 004.":
     "数据库需要升级，请联系主办人员执行第 004 号迁移脚本。",
   "This participant session has ended. Start a new participant.":

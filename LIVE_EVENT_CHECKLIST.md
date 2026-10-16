@@ -20,7 +20,7 @@ Use a test/rehearsal round before inviting the audience. Do not declare the even
 3. Refresh the browser and confirm the saved story/input survives. Never submit an extra version just because a connection failed; use **Check and retry the same request**.
 4. In `/admin`, inspect pending jobs and failed requests. Test **Retry AI judging** on a simulated failure in the test environment. Missing historical scores require the explicit **Judge unscored historical story** action and confirmation; completed historical scores remain intact.
 5. Set minimum award votes (default five). If strict voting is needed, select **Require a one-use event voting code**, save rules before voting, create codes and distribute one per attendee. Save new code output privately before navigating away.
-6. Click **Close submissions**, then **Open public voting**.
+6. Voting is already open during story creation. **Close submissions** only ends story creation; voting stays available until final results are published.
 7. Use a separate browser/device at `/vote`; read a full story, pick one star rating and submit. Check confirmation. Retry a lost-response vote with **Check and confirm my vote**; do not create a new identity.
 8. Confirm the author cannot vote for their own story from their submitting browser. Explain that anonymous cross-device identities are not a full person-verification system.
 9. Keep `/leaderboard` open in another browser. Within about 60 seconds plus a small polling offset, its rankings must update without a page reload, blank screen or lost scroll position. Check AI/public/combined scores and vote count.
@@ -47,8 +47,8 @@ Announce **eligible** final results only. Entries below the minimum vote thresho
 
 ## Continuous booth rehearsal
 
-- [ ] Apply and rehearse migration 004; /api/ready must reject an older schema. Retain private database backups.
-- [ ] Enable booth mode and author ratings in organiser rules before opening submissions. Choose the award minimum explicitly.
+- [ ] Apply and rehearse migrations 004 and 005; /api/ready must reject an older schema. Retain private database backups.
+- [ ] Apply migration 005 and choose author-rating/code rules and the award minimum. Voting opens automatically with submissions.
 - [ ] On /booth, complete Happy Panda (5 stars), Funny Uncle (4 stars) and Super Chicken (3 stars), using Finish and Start Next Participant between each. Verify prompts/nicknames clear and every prior entry remains.
 - [ ] Disconnect during generation, vote and participant reset; reconcile each operation and verify exactly one story/vote.
 - [ ] If using inactivity reset, verify the warning and that active generation/uncertain votes are retained.

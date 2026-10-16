@@ -9,7 +9,7 @@ export const COMPETITION_STATES = [
 export const TRANSITIONS = {
   WAITING: ["SUBMISSIONS_OPEN"],
   SUBMISSIONS_OPEN: ["SUBMISSIONS_CLOSED"],
-  SUBMISSIONS_CLOSED: ["VOTING"],
+  SUBMISSIONS_CLOSED: ["VOTING", "RESULTS"],
   VOTING: ["SUBMISSIONS_CLOSED", "RESULTS"],
   RESULTS: [],
 };
@@ -108,8 +108,7 @@ export function createVote(
     return { id: retry.id, submissionId, rating, recorded: true };
   }
   if (
-    round.state !== "VOTING" &&
-    !(round.boothMode && round.state === "SUBMISSIONS_OPEN")
+    !["SUBMISSIONS_OPEN", "SUBMISSIONS_CLOSED", "VOTING"].includes(round.state)
   )
     throw new DomainError("Voting is closed.", 409);
   if (!Number.isInteger(rating) || rating < 1 || rating > 5)
@@ -151,7 +150,15 @@ export function getAverageScore(round, id) {
     : null;
 }
 export function buildLeaderboard(round) {
-  if (round.snapshot) return structuredClone(round.snapshot);
+  if (round.snapshot)
+    return structuredClone(round.snapshot).map((entry) => ({
+      ...entry,
+      story:
+        entry.story ??
+        round.submissions.find((s) => s.id === entry.submissionId)
+          ?.resultText ??
+        null,
+    }));
   const totals = new Map();
   for (const v of round.votes) {
     const t = totals.get(v.submissionId) || [0, 0];
@@ -169,6 +176,7 @@ export function buildLeaderboard(round) {
         submissionId: s.id,
         participantName: s.participantName,
         title: s.title || "Untitled story",
+        story: s.resultText,
         aiScore: ai,
         averageScore: average,
         voteCount: count,

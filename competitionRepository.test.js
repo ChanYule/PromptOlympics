@@ -65,3 +65,47 @@ test("domain rejections are distinguished from storage failure", async () => {
   });
   await assert.rejects(repo.call("vote"), (e) => e.status === 409);
 });
+
+test("leaderboard story lookup uses bounded public-field GETs and safely quotes entry IDs", async () => {
+  const ids = Array.from({ length: 43 }, (_, i) =>
+      i === 0 ? 'legacy,"quoted"\\id' : "story-" + i,
+    ),
+    calls = [];
+  const repo = createCompetitionRepository({
+    env,
+    fetchImpl: async (raw, options) => {
+      const url = new URL(raw);
+      calls.push({ url, options });
+      assert.equal(url.pathname, "/rest/v1/po_submissions");
+      assert.equal(url.searchParams.get("select"), "id,story");
+      const batch = JSON.parse(
+        "[" + url.searchParams.get("id").slice(4, -1) + "]",
+      );
+      assert.ok(batch.length <= 40);
+      return new Response(
+        JSON.stringify([
+          ...batch.map((id) => ({
+            id,
+            story: "Text " + id,
+            session_id: "private",
+          })),
+          { id: "unrequested", story: "private" },
+        ]),
+      );
+    },
+  });
+  const result = await repo.leaderboardStories([...ids, ids[0]]);
+  assert.equal(calls.length, 2);
+  assert.equal(result.size, 43);
+  assert.equal(result.get(ids[0]), "Text " + ids[0]);
+  assert.equal(result.has("unrequested"), false);
+  assert.equal(calls[0].options.headers.apikey, env.SUPABASE_SECRET_KEY);
+  const broken = createCompetitionRepository({
+    env,
+    fetchImpl: async () => new Response("secret", { status: 503 }),
+  });
+  await assert.rejects(
+    broken.leaderboardStories(["id"]),
+    (e) => e instanceof StorageError && !e.message.includes("secret"),
+  );
+});

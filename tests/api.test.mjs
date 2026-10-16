@@ -411,7 +411,64 @@ test("readiness rejects a production database missing the booth migration", asyn
     assert.equal((await fetch(base + "/api/health")).status, 200);
     const ready = await fetch(base + "/api/ready");
     assert.equal(ready.status, 503);
-    assert.match((await ready.json()).error, /migration 004/);
+    assert.match((await ready.json()).error, /migration 005/);
+  } finally {
+    service.stop();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("leaderboard API includes only the matching story text, including historic rounds", async () => {
+  const calls = [];
+  const service = createApp({
+    env,
+    worker: false,
+    repository: {
+      kind: "supabase",
+      async call(action, payload) {
+        calls.push({ action, payload });
+        return action === "session-info"
+          ? { ended: false }
+          : {
+              round: { id: payload?.roundId || "current", state: "RESULTS" },
+              final: true,
+              entries: [
+                {
+                  submissionId: "official-id",
+                  participantName: "Alice",
+                  title: "A Story",
+                  finalScore: 4.5,
+                },
+              ],
+            };
+      },
+      async leaderboardStories(ids) {
+        assert.deepEqual(ids, ["official-id"]);
+        return new Map([["official-id", "The complete official story."]]);
+      },
+    },
+  });
+  const server = service.app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const c = await client("http://127.0.0.1:" + server.address().port);
+    for (const url of [
+      "/api/leaderboard",
+      "/api/leaderboard?roundId=historic",
+    ]) {
+      const response = await c.request(url);
+      assert.equal(response.status, 200);
+      assert.equal(
+        response.data.entries[0].story,
+        "The complete official story.",
+      );
+      assert.equal(JSON.stringify(response.data).includes("sessionId"), false);
+    }
+    assert.ok(
+      calls.some(
+        (c) => c.action === "leaderboard" && c.payload.roundId === "historic",
+      ),
+    );
   } finally {
     service.stop();
     await new Promise((resolve) => server.close(resolve));

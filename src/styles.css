@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   font-family:
     Inter,
     system-ui,
@@ -445,30 +445,17 @@ summary {
   gap: 20px;
   margin: 25px 0;
 }
-.mini-story {
-  display: block;
-  padding: 26px;
-  text-align: left;
-  background: #fff;
-  border-radius: 12px;
-  font-weight: 400;
+.inline-story {
   min-width: 0;
+  align-self: start;
 }
-.mini-story h2 {
-  margin: 12px 0;
+.inline-story .story-text {
+  display: block;
+  overflow: visible;
+  overflow-wrap: anywhere;
 }
-.mini-story > p:not(.eyebrow) {
-  color: var(--muted);
-  font-size: 0.96rem;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
-.mini-story > span {
-  color: var(--green);
-  font-size: 0.86rem;
-  font-weight: 650;
+.inline-story fieldset {
+  margin-top: 24px;
 }
 .stars {
   display: flex;
@@ -1014,19 +1001,152 @@ footer {
 .booth-welcome details {
   margin-top: 20px;
 }
-.booth-vote {
-  border-top: 1px solid var(--line);
-  margin-top: 24px;
-  padding-top: 24px;
-}
-.booth-vote .full + .full {
-  margin-top: 20px;
-}
-.booth-vote fieldset {
-  margin-bottom: 20px;
-}
 @media (max-width: 680px) {
   .booth-welcome {
     margin: 24px 17px;
   }
+}
+.leaderboard-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+.leaderboard-story-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.spotlight-story {
+  min-width: 0;
+  align-self: start;
+}
+.spotlight-story h3 {
+  font-size: 1.5rem;
+  margin: 12px 0;
+}
+.spotlight-story .story-text {
+  overflow-wrap: anywhere;
+}
+.spotlight-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.spotlight-controls p {
+  margin: 0;
+}
+.projector .leaderboard-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 3vw;
+}
+.projector .leaderboard-stories {
+  grid-column: 1;
+  grid-row: 1;
+}
+.projector .leaderboard-results {
+  grid-column: 2;
+  grid-row: 1;
+}
+.projector .podium {
+  display: none;
+}
+.projector .leaderboard-story-list {
+  display: block;
+}
+.projector .spotlight-story h3 {
+  font-size: clamp(28px, 2vw, 42px);
+}
+.projector .spotlight-story .story-text {
+  font-size: clamp(24px, 1.5vw, 34px);
+  line-height: 1.6;
+}
+.projector .rank-row {
+  grid-template-columns: minmax(0, 1fr) repeat(4, 65px);
+  font-size: clamp(16px, 1vw, 22px);
+}
+.projector .rank-row:nth-child(-n + 4):not(.table-heading) {
+  background: #eef4e7;
+}
+@media (max-width: 1100px) {
+  .projector .leaderboard-layout {
+    display: flex;
+  }
+  .projector .leaderboard-stories {
+    order: -1;
+  }
+}
+@media (max-width: 680px) {
+  .leaderboard-story-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.projector {
+  padding: 20px 3vw;
+}
+.projector .page-title {
+  margin: 0 0 10px;
+  gap: 12px;
+}
+.projector .page-title .eyebrow {
+  display: none;
+}
+.projector .page-title h1 {
+  font-size: 1.4em;
+  margin: 4px 0;
+}
+.projector .round-status {
+  margin: 4px 0;
+  font-size: 0.65em;
+}
+.projector .refresh-line {
+  min-height: 44px;
+  font-size: 0.65em;
+}
+.projector > .hint {
+  font-size: 0.65em;
+  line-height: 1.4;
+  margin: 8px 0;
+}
+.projector > .notice.error {
+  font-size: 0.65em;
+  margin: 8px 0;
+  padding: 10px 16px;
+}
+.projector .leaderboard-stories > h2 {
+  font-size: 1.1em;
+  margin: 8px 0 12px;
+}
+.projector .spotlight-controls {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+.projector .spotlight-controls button {
+  font-size: 16px;
+}
+.projector .spotlight-story {
+  padding: 24px;
+  margin: 0;
+}
+.projector .spotlight-story .eyebrow {
+  font-size: 18px;
+  margin: 0;
+}
+.projector .spotlight-story h3 {
+  font-size: clamp(28px, 1.8vw, 38px);
+  margin: 10px 0;
+}
+.projector .spotlight-story .story-text {
+  margin: 14px 0;
+  line-height: 1.5;
+}
+.projector .spotlight-story .score-detail {
+  font-size: 18px;
+  margin: 8px 0 0;
+}
+.projector .rankings {
+  max-height: calc(100vh - 240px);
+  overflow: auto;
 }

@@ -144,9 +144,9 @@ export function createApp({
     "/api/ready",
     route(async (req, res) => {
       const health = await call("health");
-      if (repository.kind === "supabase" && health.schemaVersion !== 4)
+      if (repository.kind === "supabase" && health.schemaVersion !== 5)
         throw new DomainError(
-          "Database upgrade required. Ask an organiser to apply migration 004.",
+          "Database upgrade required. Ask an organiser to apply migration 005.",
           503,
         );
       res.json({
@@ -177,10 +177,27 @@ export function createApp({
   );
   let cache = null,
     inflight = null;
+  async function leaderboardData(payload = {}) {
+    const data = await call("leaderboard", payload);
+    if (!repository.leaderboardStories || !data.entries?.length) return data;
+    const stories = await repository.leaderboardStories(
+      data.entries.map((e) => e.submissionId),
+    );
+    return {
+      ...data,
+      entries: data.entries.map((e) => ({
+        ...e,
+        story:
+          typeof e.story === "string"
+            ? e.story
+            : stories.get(e.submissionId) || null,
+      })),
+    };
+  }
   async function leaderboard() {
     if (cache && cache.expires > Date.now()) return cache;
     if (!inflight)
-      inflight = call("leaderboard")
+      inflight = leaderboardData()
         .then((data) => {
           const body = JSON.stringify(data),
             etag = '"' + createHash("sha256").update(body).digest("hex") + '"';
@@ -198,7 +215,7 @@ export function createApp({
     route(async (req, res) => {
       const current = req.query.roundId
         ? {
-            data: await call("leaderboard", {
+            data: await leaderboardData({
               roundId: text(req.query.roundId, 120, "a round identifier"),
             }),
           }

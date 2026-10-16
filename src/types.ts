@@ -12,6 +12,7 @@ export type Round = {
   verified?: boolean;
 };
 export type Entry = {
+  story?: string | null;
   submissionId: string;
   participantName: string;
   title: string;

@@ -116,3 +116,7 @@ After migrations 001 and 002, run the complete `supabase/migrations/003_shared_d
 ## Continuous booth workflow (migration 004)
 
 Run migrations 001, 002, 003 and 004 in numeric order for a fresh project. Existing normalized installations apply any missing 003 then 004 after backing up and rehearsing privately. Migration 004 adds round booth/self-vote settings and durable ended participant identities. It does not delete stories, scores, votes or legacy data. Never apply 003 after 004. Deploy matching API version 3 code, check /api/ready, then enable booth mode in the organiser rules before opening submissions. Detailed rollout and rollback restrictions are in BOOTH_REPORT.md.
+
+## Always-open voting update (migration 005)
+
+The current release removes rating controls from the generated-story screen and sends participants to /vote. Apply `supabase/migrations/005_always_open_voting.sql` after 004, then deploy matching server/browser code. Readiness requires schema version 5. All story, score, vote, session-boundary and final-snapshot records are retained. Voting is automatic during SUBMISSIONS_OPEN and SUBMISSIONS_CLOSED; no booth-mode setting or separate voting-opening action is needed. Publish final results to end voting. See VOTING_FLOW.md for current operator instructions.
