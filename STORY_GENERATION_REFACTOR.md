@@ -1,3 +1,5 @@
+> Historical design note. The offline heuristic implementation described here has been removed. The current official Gemini generation/judging path is documented in BOOTH_REPORT.md and aiPrompts.js.
+
 # Story Generation Refactor - Implementation Summary
 
 Historical documentation for the retained offline experiment. The live competition now uses server-side Gemini generation and judging as documented in README.md and GEMINI_SETUP.md; these template/heuristic functions do not supply official results.

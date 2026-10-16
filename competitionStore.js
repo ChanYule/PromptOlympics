@@ -1,4 +1,4 @@
-﻿import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 export const COMPETITION_STATES = [
   "WAITING",
   "SUBMISSIONS_OPEN",
@@ -90,7 +90,7 @@ export function createSubmission(store, input) {
 }
 export function createVote(
   store,
-  { submissionId, voterSession, rating, idempotencyKey },
+  { submissionId, voterSession, authorId, rating, idempotencyKey },
 ) {
   const round = getCurrentRound(store);
   const retry = store.rounds
@@ -107,15 +107,25 @@ export function createVote(
       );
     return { id: retry.id, submissionId, rating, recorded: true };
   }
-  if (round.state !== "VOTING") throw new DomainError("Voting is closed.", 409);
+  if (
+    round.state !== "VOTING" &&
+    !(round.boothMode && round.state === "SUBMISSIONS_OPEN")
+  )
+    throw new DomainError("Voting is closed.", 409);
   if (!Number.isInteger(rating) || rating < 1 || rating > 5)
     throw new DomainError("Choose a rating from 1 to 5.");
   const story = round.submissions.find(
     (s) => s.id === submissionId && !s.deleted,
   );
   if (!story) throw new DomainError("Story not found.", 404);
-  if (story.participantSession === voterSession)
-    throw new DomainError("You cannot vote for your own story.", 403);
+  if (
+    round.allowSelfVotes === false &&
+    story.participantSession === (authorId || voterSession)
+  )
+    throw new DomainError(
+      "Independent voting mode does not allow ratings of your own story.",
+      403,
+    );
   if (
     round.votes.some(
       (v) => v.submissionId === submissionId && v.voterSession === voterSession,

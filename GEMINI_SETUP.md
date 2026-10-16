@@ -1,5 +1,7 @@
 # Gemini configuration
 
+Temporary provider failures and configuration failures are now distinguished in both the interface and sanitized `gemini_request_failed` logs. See the Render troubleshooting steps in [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Sampling parameters such as `temperature` are omitted for Gemini 3.6 and later and for Gemini 3.5 Flash-Lite, following [Google's compatibility guidance](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.6). These settings are unrelated to confirming the cause of any particular deployed 503; inspect the provider status in Render's logs.
+
 Set `GEMINI_API_KEY` privately in the server environment/Render Environment panel. Use Google AI Studio to confirm the key's model access and current quota. Never add it to React or a `VITE_` variable.
 
 The existing `gemini-3.6-flash` default is retained as the benchmark. No faster model is asserted to perform better without real measurements. The implementation uses structured JSON schema output and minimal thinking for Gemini 3; title/story generation and judging each have a 768-output-token ceiling and a default 20-second request timeout. The model must return a complete response, title at most five words, and story at most 100 words; invalid output is rejected rather than truncated into a damaged story.

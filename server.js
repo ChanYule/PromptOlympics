@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
@@ -94,7 +94,20 @@ export function createApp({
         security.cookie(res, "voter", token, 86400 * 180);
         session = security.read({ headers: { cookie: `po_session=${token}` } });
       }
-      res.json({ csrf: security.csrf(session.id) });
+      let info = await call("session-info", { sessionId: session.id });
+      if (info.ended && req.query.fresh === "1") {
+        const token = security.issue("voter", 28800);
+        security.cookie(res, "voter", token, 28800);
+        session = security.read({ headers: { cookie: `po_session=${token}` } });
+        security.cookie(
+          res,
+          "ballot",
+          security.issue("ballot", 28800, session.id),
+          28800,
+        );
+        info = { ended: false };
+      }
+      res.json({ csrf: security.csrf(session.id), ended: info.ended });
     }),
   );
   app.use("/api", (req, res, next) => {
@@ -105,6 +118,7 @@ export function createApp({
         .status(401)
         .json({ error: "Please refresh to restore your event session." });
     req.sessionId = session.id;
+    req.voterId = security.read(req, "ballot")?.id || session.id;
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
       !req.path.startsWith("/admin/") &&
@@ -118,6 +132,9 @@ export function createApp({
   app.get("/api/health", (req, res) =>
     res.json({
       ok: true,
+      apiVersion: 3,
+      boothSessions: true,
+      languages: ["en", "zh"],
       storage: repository.kind,
       geminiConfigured: ai.configured,
       model: ai.model,
@@ -126,7 +143,12 @@ export function createApp({
   app.get(
     "/api/ready",
     route(async (req, res) => {
-      await call("health");
+      const health = await call("health");
+      if (repository.kind === "supabase" && health.schemaVersion !== 4)
+        throw new DomainError(
+          "Database upgrade required. Ask an organiser to apply migration 004.",
+          503,
+        );
       res.json({
         ok: true,
         storage: repository.kind,
@@ -138,7 +160,7 @@ export function createApp({
   app.get(
     "/api/competition",
     route(async (req, res) =>
-      res.json(await call("competition", { sessionId: req.sessionId })),
+      res.json(await call("competition", { sessionId: req.voterId })),
     ),
   );
   app.get(
@@ -147,7 +169,7 @@ export function createApp({
       await limit("browse:" + req.sessionId, 120, 60);
       res.json(
         await call("stories", {
-          sessionId: req.sessionId,
+          sessionId: req.voterId,
           offset: Math.max(0, parseInt(req.query.offset) || 0),
         }),
       );
@@ -273,7 +295,8 @@ export function createApp({
         )
           throw new DomainError("Choose a rating from 1 to 5.");
         const result = await call("vote", {
-          sessionId: req.sessionId,
+          sessionId: req.voterId,
+          authorId: req.sessionId,
           submissionId: text(req.body.submissionId, 120, "a story"),
           rating: req.body.rating,
           idempotencyKey: operation(req),
@@ -292,13 +315,82 @@ export function createApp({
       }
     }),
   );
+  app.get(
+    "/api/participant-score/:id",
+    route(async (req, res) => {
+      res.json(
+        await call("participant-score", {
+          sessionId: req.voterId,
+          submissionId: text(req.params.id, 120, "a story"),
+        }),
+      );
+    }),
+  );
+  app.post(
+    "/api/participant-retry",
+    route(async (req, res) => {
+      await limit("retry:" + req.sessionId, 3, 300);
+      res.json(
+        safeJob(
+          await call("participant-retry", {
+            sessionId: req.sessionId,
+            jobId: text(req.body.jobId, 120, "a request key"),
+          }),
+        ),
+      );
+    }),
+  );
+  app.post(
+    "/api/finish-participant",
+    route(async (req, res) => {
+      const result = await call("session-end", {
+        sessionId: req.sessionId,
+        voterId: req.voterId,
+        nextId: randomUUID(),
+        resetHash: digest(text(req.body.resetKey, 100, "a request key")),
+        ...(req.body.jobId
+          ? { jobId: text(req.body.jobId, 120, "a request key") }
+          : {}),
+        ...(req.body.voteKey
+          ? { voteKey: text(req.body.voteKey, 100, "a request key") }
+          : {}),
+      });
+      security.cookie(
+        res,
+        "voter",
+        security.issue("voter", 28800, result.nextId),
+        28800,
+      );
+      security.cookie(
+        res,
+        "ballot",
+        security.issue("ballot", 28800, result.nextId),
+        28800,
+      );
+      res.json({ ok: true, csrf: security.csrf(result.nextId) });
+    }),
+  );
+  app.post(
+    "/api/next-voter",
+    route(async (req, res) => {
+      await limit("next-voter:" + req.sessionId, 60, 60);
+      if ((await call("session-info", { sessionId: req.sessionId })).ended)
+        throw new DomainError(
+          "This participant session has ended. Start a new participant.",
+          403,
+        );
+      const token = security.issue("ballot", 86400);
+      security.cookie(res, "ballot", token, 86400);
+      res.json({ ok: true });
+    }),
+  );
   app.post(
     "/api/voter-code",
     route(async (req, res) => {
       await limit("code:" + req.sessionId, 10, 300);
       res.json(
         await call("redeem", {
-          sessionId: req.sessionId,
+          sessionId: req.voterId,
           codeHash: digest(
             text(req.body.code, 100, "your event code").toUpperCase(),
           ),
@@ -471,6 +563,10 @@ export function createApp({
           throw new DomainError("Enter a minimum vote count from 1 to 1000.");
         p.minVotes = req.body.minVotes;
         p.strictCodes = req.body.strictCodes;
+        if (typeof req.body.boothMode === "boolean")
+          p.boothMode = req.body.boothMode;
+        if (typeof req.body.allowSelfVotes === "boolean")
+          p.allowSelfVotes = req.body.allowSelfVotes;
       } else if (action === "codes") {
         const count = req.body.count;
         if (!Number.isInteger(count) || count < 1 || count > 500)
@@ -517,7 +613,7 @@ export function createApp({
       ? startWorker(repository, ai, {
           concurrency: Math.min(
             20,
-            Math.max(1, Number(env.AI_CONCURRENCY) || 4),
+            Math.max(1, Number(env.AI_CONCURRENCY) || 6),
           ),
           onMetric: (name, durationMs) => {
             metrics[name] = (metrics[name] || 0) + 1;

@@ -63,7 +63,7 @@ export function useFeed<T>(url: string, interval = 60000) {
         schedule(
           failures
             ? Math.min(interval * 4, 5000 * 2 ** Math.min(failures - 1, 6))
-            : interval + Math.random() * 3000,
+            : interval,
         );
       }
     }

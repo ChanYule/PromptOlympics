@@ -12,6 +12,21 @@ export async function database() {
       "utf8",
     ),
   );
+  await db.exec(
+    fs.readFileSync(
+      new URL(
+        "../supabase/migrations/003_shared_device_voting.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  await db.exec(
+    fs.readFileSync(
+      new URL("../supabase/migrations/004_booth_sessions.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   return {
     db,
     kind: "postgres-test",

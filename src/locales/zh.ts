@@ -1,4 +1,51 @@
-﻿export const zh: Record<string, string> = {
+export const zh: Record<string, string> = {
+  "50% AI + 50% public average. Public votes required for award eligibility: {count}. Ties: public score, AI score, vote count, then story ID.":
+    "AI 评分占 50%，公众平均评分占 50%。获奖所需公众票数：{count}。同分时依次比较公众评分、AI 评分、票数，最后按故事编号排序。",
+  "Generate My Story": "生成我的故事",
+  "Start Creating My Story": "开始创作我的故事",
+  "Happy Panda": "开心熊猫",
+  "Retry this story request": "重试这个故事请求",
+  "Booth mode: allow voting while story creation is open":
+    "摊位模式：投稿开放期间也允许投票",
+  "Allow participants to rate their own stories": "允许参与者为自己的故事评分",
+  "Rate your story": "为你的故事评分",
+  "How funny was your story?": "你觉得自己的故事有多好笑？",
+  "Your story rating": "为自己的故事评分",
+  "Rate {count} out of 5": "评为 {count} 星，满分 5 星",
+  "Thank you! Your vote has been recorded.": "谢谢！你的评分已成功记录。",
+  "Voting is not open for this round yet.": "本轮暂未开放投票。",
+  "Submit My Vote": "提交我的评分",
+  "Combined score: {score} / 5": "综合得分：{score} / 5",
+  "Finish and Start Next Participant": "完成并交给下一位参与者",
+  "Retry participant reset": "重试切换参与者",
+  "Welcome to Prompt Olympics": "欢迎参加提示词奥运会",
+  "One idea. Your own funny story.": "一个点子，创作属于你的趣味故事。",
+  "Create a story, read it, and give it a star rating. No registration needed.":
+    "创作故事、阅读故事，再给它评星。无需注册。",
+  "Using your own phone? Open personal mode": "使用自己的手机？进入个人模式",
+  "Booth settings": "摊位设置",
+  "Reset an inactive booth after a warning": "无人操作时，先提醒再重置摊位页面",
+  "After two minutes without activity, a 30-second warning appears. Story creation and unconfirmed votes are never cleared automatically.":
+    "两分钟无人操作后，页面会显示 30 秒提醒。正在创作的故事和尚未确认的投票不会被自动清除。",
+  "This booth will reset in 30 seconds unless you continue.":
+    "如果没有继续操作，摊位页面将在 30 秒后重置。",
+  "I am still here": "我还在使用",
+  "Sharing this device? Each person can rate every story, including their own. Select Next voter before handing over the device.":
+    "多人共用这台设备？每个人都可以为所有故事评分，包括自己创作的故事。交给下一位投票者前，请点击“下一位投票者”。",
+  "Next voter": "下一位投票者",
+  "Ready for the next voter.": "已准备好，请下一位投票者开始评分。",
+  "Your story is on its way": "你的故事正在创作中",
+  "Your request is in the queue. We will start as soon as a space is available.":
+    "你的请求正在排队。一有空位，我们就会开始创作。",
+  "Your story is written. Saving it to the competition…":
+    "故事已写好，正在保存到比赛中……",
+  "Turning your idea into a story…": "正在把你的点子写成故事……",
+  "Story progress": "故事创作进度",
+  "Idea received": "已收到点子",
+  "Creating your story": "创作故事",
+  "Saving your story": "保存故事",
+  "Please keep this page open. You do not need to submit again.":
+    "请保持此页面打开，无需重复提交。",
   "Waiting to begin": "等待比赛开始",
   "Story creation is open": "故事投稿已开放",
   "Story creation is closed": "故事投稿已截止",
@@ -243,6 +290,37 @@
     "请输入 {min} 至 {max} 之间的数字。",
 };
 export const errorZh: Record<string, string> = {
+  "Database upgrade required. Ask an organiser to apply migration 004.":
+    "数据库需要升级，请联系主办人员执行第 004 号迁移脚本。",
+  "This participant session has ended. Start a new participant.":
+    "本次参与已结束，请开始新的参与流程。",
+  "Independent voting mode does not allow ratings of your own story.":
+    "独立投票模式不允许为自己的故事评分。",
+  "Wait for the story to finish saving before starting the next participant.":
+    "请等故事保存完成后，再切换到下一位参与者。",
+  "Confirm the pending vote before starting the next participant.":
+    "请先确认尚未完成的投票，再切换到下一位参与者。",
+  "This round is closed.": "本轮已关闭。",
+  "Story AI is not configured correctly. Please contact an organiser.":
+    "故事 AI 的配置有误，请联系主办方。",
+  "Gemini took too long to respond. Please try again shortly.":
+    "Gemini 响应超时，请稍后重试。",
+  "Gemini access was denied. Please ask an organiser to check the server API key and permissions.":
+    "Gemini 拒绝了访问请求，请主办方检查服务器上的 API 密钥和权限。",
+  "Gemini API credits are exhausted. Please contact an organiser.":
+    "Gemini API 的预付额度已用完，请联系主办方。",
+  "The configured Gemini model could not be found. Please contact an organiser.":
+    "找不到所配置的 Gemini 模型，请联系主办方。",
+  "The Gemini request settings need attention. Please contact an organiser.":
+    "Gemini 请求的设置需要检查，请联系主办方。",
+  "Gemini request limits were reached. Please try again later or contact an organiser.":
+    "已达到 Gemini 的请求限制，请稍后重试或联系主办方。",
+  "Gemini is temporarily unavailable. Please try again shortly.":
+    "Gemini 暂时无法使用，请稍后重试。",
+  "Gemini encountered a temporary error. Please try again shortly.":
+    "Gemini 出现暂时性错误，请稍后重试。",
+  "We could not connect to Gemini. Please try again shortly.":
+    "无法连接 Gemini，请稍后重试。",
   "Choose English or Chinese for your story.": "请选择用英语或中文创作故事。",
   "The event session could not be restored.":
     "无法恢复你的比赛会话，请重新连接。",

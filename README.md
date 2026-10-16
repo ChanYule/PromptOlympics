@@ -50,7 +50,7 @@ The old API that accepted browser-generated stories and browser-selected voter I
 | `GEMINI_API_KEY`              | Server-only Google AI key; never stored in frontend                                           |
 | `GEMINI_MODEL`                | Existing default `gemini-3.6-flash`; benchmark before changing                                |
 | `AI_TIMEOUT_MS`               | 20,000; bounded to 5,000–30,000                                                               |
-| `AI_CONCURRENCY`              | 4 shared active leases; bounded 1–20; use same setting on every instance                      |
+| `AI_CONCURRENCY`              | 6 shared active leases; bounded 1–20; use same setting on every instance                      |
 | `MAX_QUEUE`                   | 150 unfinished generation/judging jobs                                                        |
 | `MAX_STORIES_PER_PARTICIPANT` | 5 accepted requests per session per round, including new versions/failures                    |
 | `DAILY_GENERATION_BUDGET`     | 1,000 accepted jobs per UTC database day, each with at most 3 generation and 3 judge attempts |
@@ -69,7 +69,7 @@ Supabase is the authoritative store. A database outage produces a retryable fail
 
 Accepted generation jobs may finish after submissions close. Voting must be explicitly opened. Closing voting returns to `SUBMISSIONS_CLOSED`; it can be reopened with an audited organiser action before publication. Publishing closes voting and stores an immutable snapshot. Pending/failed judging must be resolved (or the affected story removed from public competition) first. **Create a new round** retains all prior data.
 
-Gemini rubric v1: humour 50%, originality 25%, relevance 25%, each criterion from 1 to 5. The server validates and stores the model, rubric and precise weighted score. No fallback/keyword score is fabricated.
+New Gemini rubric v2: humour 50%, creativity 25%, relevance 25%, each criterion from 1 to 5 in one decimal place. Creativity is stored in the existing originality column for schema compatibility; historical scores and rubric versions are retained. The server validates and stores the model, rubric and precise weighted score. No fallback/keyword score is fabricated.
 
 Public score = sum of valid ratings / vote count. Combined score = 50% AI + 50% public average. No public votes means no combined score; the AI value remains provisional. Missing AI means no final score. The default award threshold is five public votes, configurable before voting. All stories remain visible regardless of eligibility.
 
@@ -103,3 +103,17 @@ The load harness always starts its own loopback app, defaults to a disposable PG
 For real PostgreSQL lock/concurrency validation, create a **fresh dedicated Supabase test project**, set its direct/pooler PostgreSQL connection string privately as `LOAD_TEST_DATABASE_URL`, set `ISOLATED_LOAD_TEST=YES`, then run `npm.cmd run test:load`. The runner uses 20 independent connections and refuses an occupied target. It leaves the disposable test tables for inspection; destroy the dedicated test project afterward. Never use production credentials or a production database. This still measures loopback HTTP and mocked Gemini, so a deployed HTTP/AI rehearsal remains necessary.
 
 See [LIVE_EVENT_CHECKLIST.md](LIVE_EVENT_CHECKLIST.md), [GEMINI_SETUP.md](GEMINI_SETUP.md), [TROUBLESHOOTING.md](TROUBLESHOOTING.md), [AUDIT.md](AUDIT.md) and [IMPLEMENTATION_REPORT.md](IMPLEMENTATION_REPORT.md).
+
+### Six simultaneous participants
+
+Set `AI_CONCURRENCY=6` in Render and redeploy; an existing Render variable overrides the code default. Keep this setting consistent across instances. Six participants can submit from separate browser sessions. Extra work waits in the durable queue. Each successful story normally uses one generation call and one judging call, so budget at least 12 provider requests for six stories, plus retries. Check Google AI Studio request/token limits and rehearse on the deployed service before the event. One participant has one in-flight request per browser tab to avoid accidental duplicate submissions.
+
+While generation is pending, the creation page shows a dedicated bilingual loading view with queue, writing and saving messages. Reloading restores the pending request rather than submitting a new story. Saved stories appear immediately, with judging status displayed separately.
+
+### Shared-device voting and judging repair
+
+Apply `supabase/migrations/003_shared_device_voting.sql` in Supabase SQL Editor before deploying this update. It replaces the vote API function without deleting competition data and allows ratings of stories created on the same device. One rating per story per voter remains enforced. On Read and Vote, select **Next voter** before handing over the device. This starts a separate signed ballot identity while preserving author jobs and organiser login. With strict event codes enabled, each new voter still needs their own code. This is an organiser-supervised shared-device workflow; the app does not verify that a different person pressed Next voter.
+
+The real Gemini judging path now includes the model name when saving a score, as required by the database. Deploy the fix, then use **Retry AI judging** on failed saved stories. Existing stories are retained and do not need to be regenerated. Render logs from this version include the sanitized `gemini_request_failed` diagnostic as well as timing metrics.
+
+See BOOTH_REPORT.md for the continuous booth workflow, migration 004, participant-session reset, verification evidence and deployment limits. Trusted AI instructions are maintained in aiPrompts.js. The unused offline keyword-scoring experiment was removed from src; STORY_GENERATION_REFACTOR.md is historical documentation only.

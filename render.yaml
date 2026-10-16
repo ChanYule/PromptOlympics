@@ -27,7 +27,7 @@ services:
       - key: APP_ORIGIN
         sync: false
       - key: AI_CONCURRENCY
-        value: 4
+        value: 6
       - key: MAX_QUEUE
         value: 150
       - key: DAILY_GENERATION_BUDGET

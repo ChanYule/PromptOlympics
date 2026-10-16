@@ -108,3 +108,11 @@ drop trigger if exists po_legacy_maintenance on public.prompt_olympics_state;
 ```
 
 Verify the old application's stories/counts before reopening. Leave all new tables intact for investigation. If the new app accepted any stories/votes, **do not downgrade to the stale legacy JSON**. Keep maintenance active and repair the new release or restore its PostgreSQL backup to a dedicated project. Backporting new records requires reviewed reconciliation to avoid losing confirmed votes.
+
+## Shared-device voting update
+
+After migrations 001 and 002, run the complete `supabase/migrations/003_shared_device_voting.sql` in SQL Editor. Existing installations only need this new migration for shared-device voting. It replaces the server RPC function and retains all existing data, vote uniqueness, closed-round checks and strict-code requirements. Deploy the updated server and browser together after applying it.
+
+## Continuous booth workflow (migration 004)
+
+Run migrations 001, 002, 003 and 004 in numeric order for a fresh project. Existing normalized installations apply any missing 003 then 004 after backing up and rehearsing privately. Migration 004 adds round booth/self-vote settings and durable ended participant identities. It does not delete stories, scores, votes or legacy data. Never apply 003 after 004. Deploy matching API version 3 code, check /api/ready, then enable booth mode in the organiser rules before opening submissions. Detailed rollout and rollback restrictions are in BOOTH_REPORT.md.

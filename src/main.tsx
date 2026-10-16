@@ -1,4 +1,6 @@
-﻿import React, { useEffect, useState } from "react";
+import { Booth } from "./Booth";
+import { BoothVote } from "./BoothVote";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { api, session, setAdminCsrf, readSaved, save, ApiError } from "./api";
 import { useFeed } from "./useFeed";
@@ -170,6 +172,8 @@ function App() {
               <p role="status">{t("Connecting to the event…")}</p>
             )}
           </div>
+        ) : path === "/booth" ? (
+          <Booth>{(finished) => <Play booth onFinished={finished} />}</Booth>
         ) : path === "/play" ? (
           <Play />
         ) : path === "/vote" ? (
@@ -220,8 +224,8 @@ function Home() {
           </p>
           <RoundStatus round={data} />
           <div className="actions">
-            <a className="button primary" href="/play">
-              {t("Create a Story")} <span aria-hidden>↗</span>
+            <a className="button primary" href="/booth">
+              {t("Start Creating My Story")} <span aria-hidden>↗</span>
             </a>
             <a className="button secondary" href="/vote">
               {t("Read and Vote")}{" "}
@@ -285,9 +289,15 @@ type GenerationOperation = {
   };
   jobId?: string;
 };
-function Play() {
+function Play({
+  booth = false,
+  onFinished,
+}: { booth?: boolean; onFinished?: () => void } = {}) {
+  const loadingHeading = useRef<HTMLHeadingElement>(null);
   const round = useFeed<Round>("/api/competition", 30000);
-  const [name, setName] = useState(() => readSaved("name", "")),
+  const [name, setName] = useState(() =>
+      readSaved("name", booth ? t("Happy Panda") : ""),
+    ),
     [prompt, setPrompt] = useState(() => readSaved("prompt", ""));
   const [operation, setOperation] = useState<GenerationOperation | null>(() =>
     readSaved("generation", null),
@@ -307,7 +317,10 @@ function Play() {
     save("last-job", job);
   }, [job]);
   useEffect(() => {
-    if (!operation) return;
+    if (!operation) {
+      generateLock.current = false;
+      return;
+    }
     let cancelled = false,
       timer: ReturnType<typeof setTimeout>,
       controller: AbortController | undefined;
@@ -362,21 +375,47 @@ function Play() {
       controller?.abort();
     };
   }, [operation]);
+  const generateLock = useRef(false);
   async function generate(regenerate = false) {
-    if (busy || operation) return;
+    if (busy || operation || generateLock.current) return;
+    generateLock.current = true;
     setError("");
     setJob(null);
     setOperation({
       key: crypto.randomUUID(),
       input: {
-        participantName: name.trim(),
+        participantName: name.trim() || t("Happy Panda"),
         prompt: prompt.trim(),
         regenerate,
         language: getLanguage(),
       },
     });
   }
+  useEffect(() => {
+    const refresh = () => round.refresh();
+    window.addEventListener("competition-update", refresh);
+    return () => window.removeEventListener("competition-update", refresh);
+  }, [round.refresh]);
+  async function retryFailed() {
+    if (!job) return;
+    try {
+      const next = await api<Job>("/api/participant-retry", { jobId: job.id });
+      setJob(next);
+      setError("");
+      setOperation({
+        key: "resume-" + job.id,
+        input: { participantName: name, prompt, regenerate: false },
+        jobId: job.id,
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   const story = job?.submission;
+  const loading = busy && !story;
+  useEffect(() => {
+    if (loading) loadingHeading.current?.focus();
+  }, [loading]);
   function speak() {
     if (!story) return;
     speechSynthesis.cancel();
@@ -416,7 +455,38 @@ function Play() {
           {t("Check and retry the same request")}{" "}
         </button>
       )}
-      {story ? (
+      {job?.status === "failed" && (
+        <button onClick={retryFailed}>{t("Retry this story request")}</button>
+      )}
+      {loading ? (
+        <section className="card story-loading" aria-labelledby="loading-title">
+          <div className="story-spinner" aria-hidden="true" />
+          <h2 id="loading-title" ref={loadingHeading} tabIndex={-1}>
+            {t("Your story is on its way")}
+          </h2>
+          <p role="status" aria-live="polite">
+            {job?.status === "queued"
+              ? t(
+                  "Your request is in the queue. We will start as soon as a space is available.",
+                )
+              : job?.status === "saving"
+                ? t("Your story is written. Saving it to the competition…")
+                : t("Turning your idea into a story…")}
+          </p>
+          <ol className="story-loading-steps" aria-label={t("Story progress")}>
+            <li className="done">{t("Idea received")}</li>
+            <li aria-current={job?.status !== "saving" ? "step" : undefined}>
+              {t("Creating your story")}
+            </li>
+            <li aria-current={job?.status === "saving" ? "step" : undefined}>
+              {t("Saving your story")}
+            </li>
+          </ol>
+          <p className="muted">
+            {t("Please keep this page open. You do not need to submit again.")}
+          </p>
+        </section>
+      ) : story ? (
         <article className="card story-result">
           <div className="story-meta">
             <span>{story.participantName}</span>
@@ -439,29 +509,38 @@ function Play() {
                 ? t("Story saved. AI judging needs an organiser’s attention.")
                 : t("Story saved. AI judging in progress…")}
           </div>
-          <div className="actions">
-            <button
-              onClick={() => {
-                setJob(null);
-                save("last-job", null);
-              }}
-              disabled={busy}
-            >
-              {t("Create Another Story")}{" "}
-            </button>
-            <button
-              onClick={() => generate(true)}
-              disabled={busy || round.data?.state !== "SUBMISSIONS_OPEN"}
-            >
-              {t("Create another version")}{" "}
-            </button>
-            <a className="button primary" href="/vote">
-              {t("Read Other Stories")}{" "}
-            </a>
-            {"speechSynthesis" in window && (
-              <button onClick={speak}>{t("Read aloud")}</button>
-            )}
-          </div>
+          <BoothVote
+            key={story.id}
+            job={job!}
+            round={round.data}
+            booth={booth}
+            onFinished={onFinished}
+          />
+          {!booth && (
+            <div className="actions">
+              <button
+                onClick={() => {
+                  setJob(null);
+                  save("last-job", null);
+                }}
+                disabled={busy}
+              >
+                {t("Create Another Story")}{" "}
+              </button>
+              <button
+                onClick={() => generate(true)}
+                disabled={busy || round.data?.state !== "SUBMISSIONS_OPEN"}
+              >
+                {t("Create another version")}{" "}
+              </button>
+              <a className="button primary" href="/vote">
+                {t("Read Other Stories")}{" "}
+              </a>
+              {"speechSynthesis" in window && (
+                <button onClick={speak}>{t("Read aloud")}</button>
+              )}
+            </div>
+          )}
         </article>
       ) : (
         <form
@@ -492,7 +571,7 @@ function Play() {
               autoComplete="nickname"
               value={name}
               maxLength={40}
-              required
+              required={!booth}
               disabled={busy}
               onChange={(e) => setName(e.target.value)}
             />
@@ -565,12 +644,16 @@ function Play() {
             disabled={
               busy ||
               !!operation ||
-              !name.trim() ||
+              (!booth && !name.trim()) ||
               !prompt.trim() ||
               round.data?.state !== "SUBMISSIONS_OPEN"
             }
           >
-            {busy ? t("Creating your story…") : t("Create and save my story")}
+            {busy
+              ? t("Creating your story…")
+              : booth
+                ? t("Generate My Story")
+                : t("Create and save my story")}
           </button>
           {busy && (
             <p className="notice" role="status">
@@ -658,7 +741,7 @@ function Vote() {
     }
   }
   const items = list.data?.items || [],
-    next = items.find((s) => s.id !== selected?.id && !s.voted && !s.own);
+    next = items.find((s) => s.id !== selected?.id && !s.voted);
   return (
     <div className="content">
       <div className="page-title">
@@ -667,6 +750,38 @@ function Vote() {
         <RoundStatus round={round.data} />
       </div>
       <Feedback error={error || list.error || round.error} />
+      <section className="notice">
+        <p>
+          {t(
+            "Sharing this device? Each person can rate every story, including their own. Select Next voter before handing over the device.",
+          )}
+        </p>
+        <button
+          disabled={busy || !!pending}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await api("/api/next-voter", {});
+              setSelected(null);
+              setRating(0);
+              setCode("");
+              setSuccess("Ready for the next voter.");
+              list.refresh();
+              round.refresh();
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {t("Next voter")}
+        </button>
+        {success === "Ready for the next voter." && (
+          <p role="status">{message(success)}</p>
+        )}
+      </section>
       {pending && (
         <div className="notice">
           <p>
@@ -728,9 +843,13 @@ function Vote() {
               disabled={
                 busy ||
                 selected.voted ||
-                selected.own ||
+                (selected.own && round.data?.allowSelfVotes === false) ||
                 !!pending ||
-                round.data?.state !== "VOTING"
+                !(
+                  round.data?.state === "VOTING" ||
+                  (round.data?.boothMode &&
+                    round.data?.state === "SUBMISSIONS_OPEN")
+                )
               }
             >
               <legend>{t("How funny was this story?")}</legend>
@@ -769,13 +888,7 @@ function Vote() {
                   : t("Choose 1 to 5 stars.")}
               </p>
             </fieldset>
-            {selected.own ? (
-              <p className="notice">
-                {t(
-                  "This is your story. Try rating another participant’s story.",
-                )}{" "}
-              </p>
-            ) : selected.voted ? (
+            {selected.voted ? (
               <p className="notice success" role="status">
                 {success
                   ? message(success)
@@ -791,7 +904,11 @@ function Vote() {
                   !rating ||
                   busy ||
                   !!pending ||
-                  round.data?.state !== "VOTING" ||
+                  !(
+                    round.data?.state === "VOTING" ||
+                    (round.data?.boothMode &&
+                      round.data?.state === "SUBMISSIONS_OPEN")
+                  ) ||
                   (!!round.data.strictCodes && !round.data.verified)
                 }
               >
@@ -840,11 +957,7 @@ function Vote() {
                 <h2>{s.title}</h2>
                 <p>{s.resultText}</p>
                 <span>
-                  {s.own
-                    ? t("Your story")
-                    : s.voted
-                      ? t("Vote recorded")
-                      : t("Read this story →")}
+                  {s.voted ? t("Vote recorded") : t("Read this story →")}
                 </span>
               </button>
             ))}
@@ -938,7 +1051,7 @@ function Leaderboard() {
       )}
       <p className="hint">
         {t(
-          "50% AI + 50% public average. {count} public votes are needed for award eligibility. Ties: public score, AI score, vote count, then story ID.",
+          "50% AI + 50% public average. Public votes required for award eligibility: {count}. Ties: public score, AI score, vote count, then story ID.",
           { count: data?.round.minVotes || 5 },
         )}
       </p>
@@ -1032,12 +1145,16 @@ function Admin() {
     [busy, setBusy] = useState(false),
     [codes, setCodes] = useState<string[]>([]),
     [minVotes, setMinVotes] = useState(5),
-    [strict, setStrict] = useState(false);
+    [strict, setStrict] = useState(false),
+    [boothMode, setBoothMode] = useState(false),
+    [allowSelfVotes, setAllowSelfVotes] = useState(true);
   async function load() {
     const result = await api<AdminData>("/api/admin/competition");
     setData(result);
     setMinVotes(result.round.minVotes);
     setStrict(!!result.round.strictCodes);
+    setBoothMode(!!result.round.boothMode);
+    setAllowSelfVotes(result.round.allowSelfVotes !== false);
   }
   useEffect(() => {
     let gone = false;
@@ -1248,6 +1365,22 @@ function Admin() {
           <label className="checkbox">
             <input
               type="checkbox"
+              checked={boothMode}
+              onChange={(e) => setBoothMode(e.target.checked)}
+            />
+            {t("Booth mode: allow voting while story creation is open")}
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={allowSelfVotes}
+              onChange={(e) => setAllowSelfVotes(e.target.checked)}
+            />
+            {t("Allow participants to rate their own stories")}
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
               checked={strict}
               onChange={(e) => setStrict(e.target.checked)}
             />{" "}
@@ -1262,7 +1395,7 @@ function Admin() {
             onClick={() =>
               action(
                 "settings",
-                { minVotes, strictCodes: strict },
+                { minVotes, strictCodes: strict, boothMode, allowSelfVotes },
                 t("Update voting rules for this round?"),
               )
             }

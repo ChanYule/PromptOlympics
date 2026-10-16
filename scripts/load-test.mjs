@@ -17,7 +17,7 @@ const env = {
   AI_MODE: "mock",
   SESSION_SECRET: "load-test-secret-with-at-least-32-characters",
   ADMIN_PASSWORD: "load-test-admin-password-long",
-  AI_CONCURRENCY: "4",
+  AI_CONCURRENCY: "6",
   MAX_QUEUE: "150",
 };
 const ai = createAiService(env);
@@ -111,7 +111,7 @@ try {
   );
   const jobs = [];
   console.log("Submitting 100 generation jobs");
-  await pool(creators, 30, async (c, i) => {
+  await pool(creators, 100, async (c, i) => {
     const result = await request(
       c,
       "/api/generate-story",
@@ -126,10 +126,15 @@ try {
     quotaFailuresInjected: 4,
   };
   console.log("Generation accepted", jobs.length);
+  let maximumObservedQueue = 0;
   const deadline = Date.now() + 90000;
   while (Date.now() < deadline) {
     const counts = await repo.db.query(
       "select count(*) filter(where status='ready') ready,count(*) filter(where status='failed') failed from po_jobs",
+    );
+    maximumObservedQueue = Math.max(
+      maximumObservedQueue,
+      100 - Number(counts.rows[0].ready) - Number(counts.rows[0].failed),
     );
     if (Number(counts.rows[0].ready) === 100) break;
     if (Number(counts.rows[0].failed))
@@ -148,6 +153,17 @@ try {
   );
   console.log("Generation and judging completed");
   report.scenarios.generation100.completed = 100;
+  report.scenarios.generation100.maximumObservedQueue = maximumObservedQueue;
+  const generationTimes = (
+    await repo.db.query(
+      "select extract(epoch from (updated_at-created_at))*1000 ms from po_jobs where status='ready' order by ms",
+    )
+  ).rows.map((r) => Number(r.ms));
+  report.scenarios.generation100.endToEndMockedMs = {
+    p50: generationTimes[Math.floor(generationTimes.length * 0.5)],
+    p95: generationTimes[Math.floor(generationTimes.length * 0.95)],
+    max: generationTimes.at(-1),
+  };
   await repo.call("transition", { state: "SUBMISSIONS_CLOSED", actor: "test" });
   await repo.call("transition", { state: "VOTING", actor: "test" });
   const voters = [];

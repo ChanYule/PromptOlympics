@@ -70,18 +70,8 @@ test("PostgreSQL voting, retries, privacy, final snapshots and history", async (
       actor: "admin",
     });
     await repo.call("transition", { state: "VOTING", actor: "admin" });
-    await assert.rejects(
-      repo.call("vote", {
-        sessionId: "author",
-        submissionId: id,
-        rating: 5,
-        idempotencyKey: "own",
-        id: "own",
-      }),
-      /own/,
-    );
     const votes = Array.from({ length: 50 }, (_, i) => ({
-      sessionId: "reader-" + i,
+      sessionId: i === 0 ? "author" : "reader-" + i,
       submissionId: id,
       rating: i % 2 ? 3 : 5,
       idempotencyKey: "op-" + i,
@@ -103,7 +93,7 @@ test("PostgreSQL voting, retries, privacy, final snapshots and history", async (
     assert.equal(leader.entries[0].averageScore, 4);
     assert.equal(leader.entries[0].finalScore, 4.1875);
     assert.equal(leader.entries[0].eligible, true);
-    const browse = await repo.call("stories", { sessionId: "reader-0" });
+    const browse = await repo.call("stories", { sessionId: "author" });
     assert.equal(browse.items[0].voted, true);
     assert.equal(JSON.stringify(browse).includes("reader-1"), false);
     await repo.call("transition", { state: "RESULTS", actor: "admin" });

@@ -28,10 +28,10 @@ export function createSecurity(env) {
       right = Buffer.from(b);
     return left.length === right.length && timingSafeEqual(left, right);
   };
-  function issue(type, age) {
+  function issue(type, age, id = randomUUID()) {
     const data = Buffer.from(
       JSON.stringify({
-        id: randomUUID(),
+        id,
         type,
         expires: Date.now() + age * 1000,
       }),
@@ -42,7 +42,14 @@ export function createSecurity(env) {
     const cookies = Object.fromEntries(
       (req.headers.cookie || "").split(";").map((s) => s.trim().split("=")),
     );
-    const value = cookies[type === "voter" ? "po_session" : "po_admin"];
+    const value =
+      cookies[
+        type === "voter"
+          ? "po_session"
+          : type === "ballot"
+            ? "po_ballot"
+            : "po_admin"
+      ];
     if (!value) return null;
     const [data, sig] = value.split(".");
     if (!equal(sig, sign(data))) return null;
@@ -58,7 +65,7 @@ export function createSecurity(env) {
   function cookie(res, type, value, age) {
     res.append(
       "Set-Cookie",
-      `${type === "voter" ? "po_session" : "po_admin"}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${env.NODE_ENV === "production" ? "; Secure" : ""}`,
+      `${type === "voter" ? "po_session" : type === "ballot" ? "po_ballot" : "po_admin"}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${env.NODE_ENV === "production" ? "; Secure" : ""}`,
     );
   }
   function csrf(id, type = "voter") {

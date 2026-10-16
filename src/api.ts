@@ -11,10 +11,71 @@ export class ApiError extends Error {
 export function setAdminCsrf(value: string) {
   adminCsrf = value;
 }
+const participantKeys = [
+  "name",
+  "prompt",
+  "generation",
+  "last-job",
+  "pending-vote",
+  "booth-vote-confirmed",
+  "booth-rating",
+  "booth-started",
+  "participant-reset",
+];
+export function clearParticipant() {
+  for (const key of participantKeys) sessionStorage.removeItem(key);
+}
 export async function session() {
-  const response = await fetch("/api/session");
+  let response = await fetch("/api/session");
   if (!response.ok) throw new Error("The event session could not be restored.");
-  csrf = (await response.json()).csrf;
+  let data = await response.json();
+  const resetting = readSaved<Record<string, unknown> | null>(
+    "participant-reset",
+    null,
+  );
+  if (data.ended && !resetting) {
+    response = await fetch("/api/session?fresh=1");
+    if (!response.ok)
+      throw new Error("The event session could not be restored.");
+    data = await response.json();
+  }
+  csrf = data.csrf;
+  if (resetting) {
+    if (resetting.context && resetting.context !== csrf) clearParticipant();
+    else await finishParticipant();
+  }
+  const context = readSaved<string>("participant-context", "");
+  if (context && context !== csrf) clearParticipant();
+  save("participant-context", csrf);
+}
+export async function finishParticipant(
+  input: { jobId?: string; voteKey?: string } = {},
+) {
+  const request = readSaved<Record<string, unknown> | null>(
+    "participant-reset",
+    null,
+  ) || { ...input, resetKey: crypto.randomUUID(), context: csrf };
+  if (readSaved("participant-reset", null)) {
+    const response = await fetch("/api/session");
+    if (!response.ok)
+      throw new Error("The event session could not be restored.");
+    const current = await response.json();
+    if (request.context && current.csrf !== request.context) {
+      csrf = current.csrf;
+      clearParticipant();
+      save("participant-context", csrf);
+      return;
+    }
+    csrf = current.csrf;
+  }
+  save("participant-reset", request);
+  const result = await api<{ csrf: string }>(
+    "/api/finish-participant",
+    request,
+  );
+  csrf = result.csrf;
+  clearParticipant();
+  save("participant-context", csrf);
 }
 export async function api<T>(
   url: string,

@@ -23,7 +23,7 @@ The old permissive OPEN rule cannot coexist with the requested separate submissi
 
 Published results cannot be reopened or edited through the app. Organisers can close/reopen voting before publication with an audit trail. After publication, start a new round. A historical amendment would require a separately reviewed database procedure and preserved prior snapshot; no automatic amendment path is shipped.
 
-The legacy offline story-generation experiment is retained in `src/storyGeneration.ts` but is not imported into the competition runtime. New competition scores never use it.
+The unused offline story-generation and keyword-scoring experiment was removed from src during the booth audit. Official stories and judging use the server Gemini path. See BOOTH_REPORT.md for current findings and verification.
 
 ## Architecture
 
@@ -32,3 +32,5 @@ React routes → Express session/validation boundary → normalized PostgreSQL R
 The queue uses shared admission/claim locks and expiring worker leases. A generated result is persisted before the submission-saving step. Expired workers cannot commit with an old lease token. Restart recovery may repeat a provider call if the process dies before its result is persisted; the official submission remains unique. The queue limit bounds both generation and judging backlog. A configurable accepted-job budget bounds attempts, though provider-specific token/currency quotas still need separate monitoring.
 
 Development storage is explicitly selected and supports one Node process only. It is not capacity evidence for production. The repeatable local SQL/load tests use PGlite, which serializes database operations. An optional dedicated PostgreSQL load runner uses 20 real connections and refuses an occupied target.
+
+The current continuous booth audit and additional migration/session tests are recorded in BOOTH_REPORT.md. Earlier statements about separate-only voting phases or blanket self-vote rejection are superseded by configurable booth/independent-voter settings.

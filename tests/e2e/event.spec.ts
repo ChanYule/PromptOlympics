@@ -86,7 +86,7 @@ test("complete live event, response-loss recovery, polling, final results and re
     .getByRole("button", { name: /Alice.*The Unlikely Chef/ })
     .first()
     .click();
-  await expect(author.getByText("This is your story.")).toBeVisible();
+  await expect(author.getByLabel("5 stars: Loved it")).toBeEnabled();
   await voter.goto("/vote");
   await voter
     .getByRole("button", { name: /Alice.*The Unlikely Chef/ })
@@ -125,6 +125,20 @@ test("complete live event, response-loss recovery, polling, final results and re
   await voter.getByRole("button", { name: "Read Next Story" }).click();
   await voter.getByLabel("4 stars: Funny").check();
   await voter.getByRole("button", { name: "Submit Vote" }).click();
+  await expect(
+    voter.getByText("Your vote is recorded. Thank you!"),
+  ).toBeVisible();
+  await voter.getByRole("button", { name: "Next voter", exact: true }).click();
+  await expect(
+    voter.getByText("Ready for the next voter.", { exact: true }),
+  ).toBeVisible();
+  await voter
+    .getByRole("button", { name: /Alice.*The Unlikely Chef/ })
+    .first()
+    .click();
+  await expect(voter.getByLabel("5 stars: Loved it")).toBeEnabled();
+  await voter.getByLabel("5 stars: Loved it").check();
+  await voter.getByRole("button", { name: "Submit Vote", exact: true }).click();
   await expect(
     voter.getByText("Your vote is recorded. Thank you!"),
   ).toBeVisible();

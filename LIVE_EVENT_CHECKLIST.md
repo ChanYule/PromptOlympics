@@ -44,3 +44,13 @@ Use a test/rehearsal round before inviting the audience. Do not declare the even
 Take a fresh backup before any recovery. Follow the rollback restrictions in `SUPABASE_SETUP.md`; never return to stale legacy data after new votes were accepted. Keep the event paused until `/api/ready`, vote reconciliation and leaderboard checks succeed.
 
 Announce **eligible** final results only. Entries below the minimum vote threshold remain visible as provisional, but cannot receive official awards under the configured rule. Preserve the CSV and database snapshot for review. A published round cannot be silently reopened or amended; use a new round or a separately reviewed amendment procedure.
+
+## Continuous booth rehearsal
+
+- [ ] Apply and rehearse migration 004; /api/ready must reject an older schema. Retain private database backups.
+- [ ] Enable booth mode and author ratings in organiser rules before opening submissions. Choose the award minimum explicitly.
+- [ ] On /booth, complete Happy Panda (5 stars), Funny Uncle (4 stars) and Super Chicken (3 stars), using Finish and Start Next Participant between each. Verify prompts/nicknames clear and every prior entry remains.
+- [ ] Disconnect during generation, vote and participant reset; reconcile each operation and verify exactly one story/vote.
+- [ ] If using inactivity reset, verify the warning and that active generation/uncertain votes are retained.
+- [ ] Check /play separately on personal phones and /leaderboard on two screens, including the projector. Confirm background updates, larger text, keyboard/touch use and network recovery.
+- [ ] Run the isolated live 20-case prompt quality check described in BOOTH_REPORT.md and measure actual generation latency; mocks cannot establish humour or a 5-to-10-second target.

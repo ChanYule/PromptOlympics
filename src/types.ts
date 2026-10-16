@@ -7,6 +7,8 @@ export type Round = {
   state: RoundState;
   minVotes: number;
   strictCodes?: boolean;
+  boothMode?: boolean;
+  allowSelfVotes?: boolean;
   verified?: boolean;
 };
 export type Entry = {

@@ -201,7 +201,7 @@ test("HTTP sessions, CSRF, official generation, polling, voting and admin logout
           "own",
         )
       ).status,
-      403,
+      201,
     );
     const vote = await reader.request(
       "/api/votes",
@@ -249,6 +249,42 @@ test("HTTP sessions, CSRF, official generation, polling, voting and admin logout
       ).status,
       404,
     );
+    assert.equal(
+      (
+        await reader.request("/api/next-voter", {}, undefined, {
+          "X-CSRF-Token": "",
+        })
+      ).status,
+      403,
+    );
+    assert.equal((await reader.request("/api/next-voter", {})).status, 200);
+    const afterReset = await reader.request("/api/stories");
+    assert.equal(
+      afterReset.data.items.find((s) => s.id === job.id).voted,
+      false,
+    );
+    assert.equal(
+      (
+        await reader.request(
+          "/api/votes",
+          { submissionId: job.id, rating: 5 },
+          "next-voter-vote",
+        )
+      ).status,
+      201,
+    );
+    assert.equal(
+      (
+        await reader.request(
+          "/api/votes",
+          { submissionId: job.id, rating: 5 },
+          "next-voter-vote",
+        )
+      ).status,
+      201,
+    );
+    assert.equal((await author.request("/api/next-voter", {})).status, 200);
+    assert.equal((await author.request("/api/jobs/" + job.id)).status, 200);
     const leaderboard = await reader.request("/api/leaderboard");
     assert.equal(leaderboard.data.entries[0].finalScore, 4.6875);
     assert.equal(
@@ -258,6 +294,46 @@ test("HTTP sessions, CSRF, official generation, polling, voting and admin logout
         })
       ).status,
       304,
+    );
+    const retiredCookie = author.cookie;
+    assert.equal(
+      (
+        await author.request("/api/finish-participant", {
+          jobId: job.id,
+          resetKey: "reset-intent",
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await author.request("/api/jobs/" + job.id, undefined, undefined, {
+          cookie: retiredCookie,
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await author.request(
+          "/api/finish-participant",
+          { jobId: job.id, resetKey: "wrong-intent" },
+          undefined,
+          { cookie: retiredCookie },
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await author.request(
+          "/api/finish-participant",
+          { jobId: job.id, resetKey: "reset-intent" },
+          undefined,
+          { cookie: retiredCookie },
+        )
+      ).status,
+      200,
     );
     const publicData = JSON.stringify(
       (await reader.request("/api/competition")).data,
@@ -281,7 +357,7 @@ test("HTTP sessions, CSRF, official generation, polling, voting and admin logout
     await admin.request("/api/admin/logout", {});
     assert.equal((await admin.request("/api/admin/competition")).status, 401);
     const restart = createCompetitionRepository({ env: e });
-    assert.equal((await restart.call("leaderboard")).entries[0].voteCount, 1);
+    assert.equal((await restart.call("leaderboard")).entries[0].voteCount, 3);
   } finally {
     service.stop();
     await new Promise((r) => server.close(r));
@@ -293,11 +369,11 @@ test("AI validation rejects unsafe, malformed, excessive and invalid results", (
     {},
     { title: "Title", text: "", safeForPublic: true },
     {
-      title: "One two three four five six",
+      title: "One two three four five six seven",
       text: "Story.",
       safeForPublic: true,
     },
-    { title: "Title", text: "word ".repeat(101), safeForPublic: true },
+    { title: "Title", text: "word ".repeat(111), safeForPublic: true },
     { title: "Title", text: "Story.", safeForPublic: false },
   ])
     assert.throws(() => validateStory(v));
@@ -315,4 +391,29 @@ test("AI validation rejects unsafe, malformed, excessive and invalid results", (
     ).overall,
     4.375,
   );
+});
+
+test("readiness rejects a production database missing the booth migration", async () => {
+  const service = createApp({
+    env,
+    worker: false,
+    repository: {
+      kind: "supabase",
+      async call() {
+        return { ok: true };
+      },
+    },
+  });
+  const server = service.app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const base = "http://127.0.0.1:" + server.address().port;
+    assert.equal((await fetch(base + "/api/health")).status, 200);
+    const ready = await fetch(base + "/api/ready");
+    assert.equal(ready.status, 503);
+    assert.match((await ready.json()).error, /migration 004/);
+  } finally {
+    service.stop();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

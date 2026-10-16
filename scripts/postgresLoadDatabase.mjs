@@ -26,6 +26,16 @@ export async function postgresLoadDatabase() {
         "utf8",
       ),
     );
+    for (const file of [
+      "003_shared_device_voting.sql",
+      "004_booth_sessions.sql",
+    ])
+      await pool.query(
+        fs.readFileSync(
+          new URL("../supabase/migrations/" + file, import.meta.url),
+          "utf8",
+        ),
+      );
   } catch (e) {
     await pool.end();
     throw e;

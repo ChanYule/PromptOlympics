@@ -25,14 +25,14 @@ export function auditTranslations() {
     )
       failures.push("Missing Chinese text: " + key);
   }
-  const content = fs.readFileSync("src/main.tsx", "utf8"),
-    source = ts.createSourceFile(
-      "main.tsx",
-      content,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TSX,
-    );
+  const content = fs.readFileSync("src/main.tsx", "utf8");
+  let source = ts.createSourceFile(
+    "main.tsx",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
   function visit(n) {
     if (
       ts.isJsxText(n) &&
@@ -73,6 +73,20 @@ export function auditTranslations() {
     ts.forEachChild(n, visit);
   }
   visit(source);
+  const mainSource = source;
+  for (const file of fs
+    .readdirSync("src")
+    .filter((f) => f.endsWith(".tsx") && f !== "main.tsx")) {
+    source = ts.createSourceFile(
+      file,
+      fs.readFileSync("src/" + file, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    visit(source);
+  }
+  source = mainSource;
   for (const name of ["labels", "ratings", "examples"]) {
     const nodes = [];
     function collect(n) {
@@ -94,7 +108,11 @@ export function auditTranslations() {
       strings(node);
     }
   }
-  const sql = fs.readFileSync("supabase/migrations/001_normalized.sql", "utf8");
+  const sql = fs
+    .readdirSync("supabase/migrations")
+    .filter((f) => f.endsWith(".sql"))
+    .map((f) => fs.readFileSync("supabase/migrations/" + f, "utf8"))
+    .join("\n");
   for (const match of sql.matchAll(/'error','([^']+)'/g))
     if (!(match[1] in errorZh)) failures.push("Missing SQL error: " + match[1]);
   for (const file of [

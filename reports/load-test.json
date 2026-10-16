@@ -11,11 +11,17 @@
     "generation100": {
       "accepted": 100,
       "quotaFailuresInjected": 4,
-      "completed": 100
+      "completed": 100,
+      "maximumObservedQueue": 10,
+      "endToEndMockedMs": {
+        "p50": 420,
+        "p95": 1036,
+        "max": 4919
+      }
     },
     "voting500": {
       "acknowledged": 500,
-      "durationMs": 3593.2614000000003
+      "durationMs": 2692.2054000000007
     },
     "duplicate100": {
       "additionalRecords": 0
@@ -40,20 +46,20 @@
   "duplicateVoteRecords": 0,
   "voteLatency": {
     "requests": 653,
-    "averageMs": 354.748102143951,
-    "p95Ms": 497.6226000000006
+    "averageMs": 277.40330183767253,
+    "p95Ms": 359.2574000000004
   },
   "leaderboardLatency": {
     "requests": 201,
-    "averageMs": 90.31270945273631,
-    "p95Ms": 141.96860000000015
+    "averageMs": 106.24851094527361,
+    "p95Ms": 150.8748999999989
   },
-  "elapsedSeconds": 10.958145499999999,
-  "requestsPerSecond": 87.0585264632597,
+  "elapsedSeconds": 11.217146799999998,
+  "requestsPerSecond": 85.04836541855725,
   "expectedRejectionRate": 0.05450733752620545,
   "unexpectedErrors": 0,
-  "peakRssMB": 480.8046875,
-  "cpuMs": 2859,
+  "peakRssMB": 468.609375,
+  "cpuMs": 4438,
   "queueRemaining": 0,
   "passed": true
 }

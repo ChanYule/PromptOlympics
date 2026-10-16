@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createCompetition,
@@ -41,20 +41,10 @@ test("precise equal weighting, provisional eligibility, duplicate retries and se
   const { store, story } = setup();
   story.aiScore = { overall: 4.375 };
   open(store);
-  assert.throws(
-    () =>
-      createVote(store, {
-        submissionId: story.id,
-        voterSession: "author",
-        rating: 5,
-        idempotencyKey: "own",
-      }),
-    /own/,
-  );
   for (let i = 0; i < 5; i++)
     createVote(store, {
       submissionId: story.id,
-      voterSession: "reader" + i,
+      voterSession: i === 0 ? "author" : "reader" + i,
       rating: [5, 4, 5, 3, 4][i],
       idempotencyKey: "vote" + i,
     });
@@ -64,7 +54,7 @@ test("precise equal weighting, provisional eligibility, duplicate retries and se
   assert.equal(row.eligible, true);
   const retry = createVote(store, {
     submissionId: story.id,
-    voterSession: "reader0",
+    voterSession: "author",
     rating: 5,
     idempotencyKey: "vote0",
   });
@@ -74,7 +64,7 @@ test("precise equal weighting, provisional eligibility, duplicate retries and se
     () =>
       createVote(store, {
         submissionId: story.id,
-        voterSession: "reader0",
+        voterSession: "author",
         rating: 1,
         idempotencyKey: "vote0",
       }),

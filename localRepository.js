@@ -23,6 +23,7 @@ export function createLocalRepository(filename) {
     );
   store.schemaVersion = 2;
   store.adminSessions ??= [];
+  store.endedSessions ??= {};
   function commit() {
     fs.mkdirSync(path.dirname(filename), { recursive: true });
     fs.writeFileSync(filename + ".tmp", JSON.stringify(store));
@@ -47,6 +48,111 @@ export function createLocalRepository(filename) {
     const story = store.rounds
       .flatMap((r) => r.submissions)
       .find((s) => s.id === p.submissionId);
+    if (
+      [
+        "enqueue",
+        "vote",
+        "job",
+        "redeem",
+        "participant-score",
+        "participant-retry",
+      ].includes(action) &&
+      store.endedSessions[p.sessionId]
+    )
+      throw new DomainError(
+        "This participant session has ended. Start a new participant.",
+        403,
+      );
+    if (action === "session-info")
+      return { ended: !!store.endedSessions[p.sessionId] };
+    if (action === "session-end") {
+      if (store.endedSessions[p.sessionId]) {
+        if (store.endedSessions[p.sessionId].resetHash !== p.resetHash)
+          throw new DomainError(
+            "This participant session has ended. Start a new participant.",
+            403,
+          );
+        return { nextId: store.endedSessions[p.sessionId].nextId };
+      }
+      if (
+        store.jobs.some(
+          (j) =>
+            j.sessionId === p.sessionId &&
+            !j.submissionId &&
+            !["ready", "failed"].includes(j.status),
+        )
+      )
+        throw new DomainError(
+          "Wait for the story to finish saving before starting the next participant.",
+          409,
+        );
+      if (
+        p.jobId &&
+        !store.jobs.some((j) => j.id === p.jobId && j.sessionId === p.sessionId)
+      )
+        throw new DomainError("Request not found.", 404);
+      if (
+        p.voteKey &&
+        !store.rounds.some((r) =>
+          r.votes.some(
+            (v) =>
+              v.voterSession === (p.voterId || p.sessionId) &&
+              v.idempotencyKey === p.voteKey,
+          ),
+        )
+      )
+        throw new DomainError(
+          "Confirm the pending vote before starting the next participant.",
+          409,
+        );
+      store.endedSessions[p.sessionId] = {
+        nextId: p.nextId,
+        resetHash: p.resetHash,
+      };
+      if (p.voterId)
+        store.endedSessions[p.voterId] = {
+          nextId: p.nextId,
+          resetHash: p.resetHash,
+        };
+      return { nextId: p.nextId };
+    }
+    if (action === "participant-score") {
+      const round = store.rounds.find((r) =>
+        r.submissions.some((s) => s.id === p.submissionId && !s.deleted),
+      );
+      if (!round) throw new DomainError("Story not found.", 404);
+      const vote = round.votes.find(
+        (v) =>
+          v.submissionId === p.submissionId && v.voterSession === p.sessionId,
+      );
+      return {
+        voted: !!vote,
+        rating: vote?.overall,
+        entry: buildLeaderboard(round).find(
+          (e) => e.submissionId === p.submissionId,
+        ),
+      };
+    }
+    if (action === "participant-retry") {
+      if (!j || j.sessionId !== p.sessionId)
+        throw new DomainError("Request not found.", 404);
+      const round = store.rounds.find((r) => r.id === j.roundId);
+      if (
+        round.state === "RESULTS" ||
+        (!j.submissionId && round.state !== "SUBMISSIONS_OPEN")
+      )
+        throw new DomainError("This round is closed.", 409);
+      if (j.status === "failed") {
+        j.status = j.submissionId ? "judging" : "queued";
+        j.attempts = 0;
+        j.judgeAttempts = 0;
+        j.error = null;
+        j.leaseUntil = 0;
+        j.availableAt = now;
+        if (story) story.judgingStatus = "pending";
+      }
+      return publicJob(j);
+    }
     if (action === "admin-session-create") {
       store.adminSessions = store.adminSessions.filter((s) => s.expires > now);
       store.adminSessions.push(p);
@@ -62,7 +168,8 @@ export function createLocalRepository(filename) {
       store.adminSessions = store.adminSessions.filter((s) => s.id !== p.id);
       return {};
     }
-    if (action === "health") return { ok: true, storageConnected: true };
+    if (action === "health")
+      return { ok: true, storageConnected: true, schemaVersion: 4 };
     if (action === "limit") {
       store.limits = store.limits.filter((l) => l.expiresAt > now);
       let l = store.limits.find((l) => l.key === p.key);
@@ -82,6 +189,8 @@ export function createLocalRepository(filename) {
         state: r.state,
         minVotes: r.minVotes,
         strictCodes: !!r.strictCodes,
+        boothMode: !!r.boothMode,
+        allowSelfVotes: r.allowSelfVotes !== false,
         verified: store.codes.some(
           (c) => c.roundId === r.id && c.voterId === p.sessionId,
         ),
@@ -259,7 +368,7 @@ export function createLocalRepository(filename) {
       }
       if (action === "judged") {
         const s = round.submissions.find((s) => s.id === j.submissionId);
-        s.aiScore = p.score;
+        if (!s.aiScore) s.aiScore = p.score;
         s.judgingStatus = "ready";
         j.status = "ready";
         j.error = null;
@@ -358,6 +467,9 @@ export function createLocalRepository(filename) {
           throw new DomainError("Close voting before changing rules.", 409);
         r.minVotes = p.minVotes;
         r.strictCodes = p.strictCodes;
+        if (typeof p.boothMode === "boolean") r.boothMode = p.boothMode;
+        if (typeof p.allowSelfVotes === "boolean")
+          r.allowSelfVotes = p.allowSelfVotes;
       } else if (action === "codes")
         store.codes.push(...p.hashes.map((hash) => ({ hash, roundId: r.id })));
       else throw new DomainError("Unknown operation.");
