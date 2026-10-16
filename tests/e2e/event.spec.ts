@@ -41,8 +41,8 @@ test("complete live event, response-loss recovery, polling, final results and re
     fullPage: true,
   });
   await author.goto("/play");
-  await author.getByLabel("1. What name").fill("Alice");
-  await author.getByLabel("2. What happens").fill("A robot cooks noodles.");
+  await author.getByLabel("What should we call").fill("Alice");
+  await author.getByLabel("What should happen").fill("A robot cooks noodles.");
   expect(
     (
       await new AxeBuilder({ page: author })
@@ -59,9 +59,7 @@ test("complete live event, response-loss recovery, polling, final results and re
       await route.abort("failed");
     } else await route.continue();
   });
-  await author
-    .getByRole("button", { name: "Create and save my story" })
-    .click();
+  await author.getByRole("button", { name: "Create My Funny Story" }).click();
   await expect(
     author.getByRole("button", { name: "Check and retry the same request" }),
   ).toBeVisible();
@@ -81,12 +79,20 @@ test("complete live event, response-loss recovery, polling, final results and re
     "Story creation is closed",
   );
   await author.goto("/vote");
+  await author
+    .getByRole("button", { name: "Read and Vote", exact: false })
+    .first()
+    .click();
   await expect(
     author.getByRole("article").first().getByLabel("5 stars: Loved it"),
   ).toBeEnabled();
   await voter.goto("/vote");
-  const firstCard = voter.getByRole("article").nth(0),
-    secondCard = voter.getByRole("article").nth(1);
+  const firstCard = voter.locator(".focused-story article"),
+    secondCard = firstCard;
+  await voter
+    .getByRole("button", { name: "Read and Vote", exact: false })
+    .first()
+    .click();
   await expect(firstCard.locator(".story-text")).toHaveText(
     /bright ideas still need soup/,
   );
@@ -111,7 +117,7 @@ test("complete live event, response-loss recovery, polling, final results and re
     } else await route.continue();
   });
   await firstCard
-    .getByRole("button", { name: "Submit Vote", exact: true })
+    .getByRole("button", { name: "Submit My Vote", exact: true })
     .click();
   await expect(
     firstCard.getByRole("button", { name: "Check and confirm my vote" }),
@@ -122,9 +128,16 @@ test("complete live event, response-loss recovery, polling, final results and re
   await expect(
     firstCard.getByText("Your vote is recorded. Thank you!", { exact: true }),
   ).toBeVisible();
+  await voter
+    .getByRole("button", { name: "Read Another Story", exact: true })
+    .click();
+  await voter
+    .getByRole("button", { name: "Read and Vote", exact: false })
+    .nth(1)
+    .click();
   await secondCard.getByLabel("4 stars: Funny").check();
   await secondCard
-    .getByRole("button", { name: "Submit Vote", exact: true })
+    .getByRole("button", { name: "Submit My Vote", exact: true })
     .click();
   await expect(
     secondCard.getByText("Your vote is recorded. Thank you!", { exact: true }),
@@ -133,10 +146,17 @@ test("complete live event, response-loss recovery, polling, final results and re
   await expect(
     voter.getByText("Ready for the next voter.", { exact: true }),
   ).toBeVisible();
+  await voter
+    .getByRole("button", { name: "Back to stories", exact: false })
+    .click();
+  await voter
+    .getByRole("button", { name: "Read and Vote", exact: false })
+    .first()
+    .click();
   await expect(firstCard.getByLabel("5 stars: Loved it")).toBeEnabled();
   await firstCard.getByLabel("5 stars: Loved it").check();
   await firstCard
-    .getByRole("button", { name: "Submit Vote", exact: true })
+    .getByRole("button", { name: "Submit My Vote", exact: true })
     .click();
   await expect(
     firstCard.getByText("Your vote is recorded. Thank you!", { exact: true }),
@@ -166,17 +186,19 @@ test("complete live event, response-loss recovery, polling, final results and re
       body: JSON.stringify({ error: "Temporary outage" }),
     }),
   );
-  await voter.getByRole("button", { name: "Refresh now" }).click();
+  await voter.getByRole("button", { name: "Refresh Now" }).click();
   await expect(
-    voter.getByText("The last confirmed rankings remain visible."),
+    voter.getByText(
+      "Connection interrupted. Showing the last confirmed rankings.",
+    ),
   ).toBeVisible();
   await expect(voter.getByRole("table")).toContainText("4.69");
   await voter.unroute("**/api/leaderboard");
-  await voter.getByRole("button", { name: "Refresh now" }).click();
+  await voter.getByRole("button", { name: "Refresh Now" }).click();
   await expect(voter.getByText("Temporary outage")).toHaveCount(0);
-  await voter.getByRole("button", { name: "Present fullscreen" }).click();
+  await voter.getByRole("button", { name: "Presentation Mode" }).click();
   await expect(voter.locator(".projector")).toBeVisible();
-  await voter.getByRole("button", { name: "Exit presentation" }).click();
+  await voter.getByRole("button", { name: "Exit Presentation" }).click();
   for (const [width, height] of [
     [375, 812],
     [768, 1024],
@@ -209,9 +231,9 @@ test("complete live event, response-loss recovery, polling, final results and re
   await expect(admin.locator(".round-status")).toContainText(
     "Final results published",
   );
-  await voter.getByRole("button", { name: "Refresh now" }).click();
+  await voter.getByRole("button", { name: "Refresh Now" }).click();
   await expect(
-    voter.getByRole("heading", { name: "Final Results" }),
+    voter.getByRole("heading", { name: "Prompt Olympics Leaderboard" }),
   ).toBeVisible();
   await admin.getByRole("button", { name: "Sign out" }).click();
   await expect(

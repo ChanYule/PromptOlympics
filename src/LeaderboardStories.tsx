@@ -1,3 +1,4 @@
+import { api } from "./api";
 import { useEffect, useRef, useState } from "react";
 import type { Entry } from "./types";
 import { t } from "./i18n";
@@ -15,6 +16,37 @@ export function LeaderboardStories({
   const [paused, setPaused] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
+  const [stories, setStories] = useState<Record<string, string | null>>({});
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const storyCache = useRef<Record<string, string | null>>({});
+  useEffect(() => {
+    if (
+      !selectedId ||
+      Object.prototype.hasOwnProperty.call(storyCache.current, selectedId)
+    )
+      return;
+    const controller = new AbortController();
+    setError(false);
+    const roundId = new URLSearchParams(window.location.search).get("round");
+    api<{ story: string | null }>(
+      "/api/leaderboard/story/" +
+        encodeURIComponent(selectedId) +
+        (roundId ? "?roundId=" + encodeURIComponent(roundId) : ""),
+      undefined,
+      undefined,
+      controller.signal,
+    )
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        storyCache.current[selectedId] = data.story;
+        setStories({ ...storyCache.current });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setError(true);
+      });
+    return () => controller.abort();
+  }, [selectedId, retry]);
   const currentEntries = useRef(entries);
   currentEntries.current = entries;
   useEffect(() => {
@@ -24,7 +56,12 @@ export function LeaderboardStories({
   useEffect(() => {
     if (!presentation || paused) return;
     const timer = setInterval(() => {
-      if (document.hidden || document.querySelector(".app.reduced")) return;
+      if (
+        document.hidden ||
+        document.querySelector(".app.reduced") ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      )
+        return;
       const values = currentEntries.current;
       if (values.length < 2) return;
       setSelectedId(
@@ -46,7 +83,7 @@ export function LeaderboardStories({
     0,
     entries.findIndex((e) => e.submissionId === selectedId),
   );
-  const visible = presentation ? [entries[index]] : entries;
+  const visible = [entries[index]];
   function move(step: number) {
     setRotationReset((v) => v + 1);
     setSelectedId(
@@ -61,10 +98,14 @@ export function LeaderboardStories({
       <h2>
         {presentation ? t("Story spotlight") : t("Stories on the leaderboard")}
       </h2>
-      {presentation && entries.length > 1 && (
+      {entries.length > 1 && (
         <div className="spotlight-controls">
           <button onClick={() => move(-1)}>{t("Previous story")}</button>
-          <button aria-pressed={paused} onClick={() => setPaused((v) => !v)}>
+          <button
+            hidden={!presentation}
+            aria-pressed={paused}
+            onClick={() => setPaused((v) => !v)}
+          >
             {paused ? t("Resume story rotation") : t("Pause story rotation")}
           </button>
           <button onClick={() => move(1)}>{t("Next story")}</button>
@@ -84,18 +125,32 @@ export function LeaderboardStories({
             aria-labelledby={"leaderboard-story-" + e.submissionId}
           >
             <p className="eyebrow">
-              {t("Rank {rank} · A story by {name}", {
-                rank: entries.indexOf(e) + 1,
-                name: e.participantName,
-              })}
+              {e.eligible
+                ? t("Rank {rank} · A story by {name}", {
+                    rank:
+                      entries.filter((entry) => entry.eligible).indexOf(e) + 1,
+                    name: e.participantName,
+                  })
+                : t("Provisional · A story by {name}", {
+                    name: e.participantName,
+                  })}
             </p>
             <h3 id={"leaderboard-story-" + e.submissionId}>{e.title}</h3>
             <p
               className="story-text"
               lang={/\p{Script=Han}/u.test(e.story || "") ? "zh-Hans" : "en"}
             >
-              {e.story || t("Story text is unavailable for this entry.")}
+              {stories[e.submissionId] ??
+                e.story ??
+                (error
+                  ? t("Story text is unavailable for this entry.")
+                  : t("Loading story..."))}
             </p>
+            {error && (
+              <button onClick={() => setRetry((value) => value + 1)}>
+                {t("Retry connection")}
+              </button>
+            )}
             <p className="score-detail">
               {t("AI {ai} · Public {public} · Combined {combined} / 5", {
                 ai: e.aiScore?.toFixed(2) ?? "—",

@@ -54,14 +54,16 @@ test("English/Chinese switching covers every page, preserves drafts and ratings,
     .getByRole("link", { name: "创作故事", exact: true })
     .first()
     .click();
-  await page.getByLabel("1. 你想使用什么名字？").fill("保留的昵称");
-  await page.getByLabel("2. 你的故事里发生了什么？").fill("保留的点子");
+  await page.getByLabel("我们该怎么称呼你？").fill("保留的昵称");
+  await page.getByLabel("你希望故事里发生什么事？").fill("保留的点子");
   await page.getByRole("button", { name: "English", exact: true }).click();
-  await expect(page.getByLabel("1. What name")).toHaveValue("保留的昵称");
-  await expect(page.getByLabel("2. What happens")).toHaveValue("保留的点子");
+  await expect(page.getByLabel("What should we call")).toHaveValue(
+    "保留的昵称",
+  );
+  await expect(page.getByLabel("What should happen")).toHaveValue("保留的点子");
   await page.getByRole("button", { name: "中文", exact: true }).click();
   await page.reload();
-  await expect(page.getByLabel("2. 你的故事里发生了什么？")).toHaveValue(
+  await expect(page.getByLabel("你希望故事里发生什么事？")).toHaveValue(
     "保留的点子",
   );
   await expect(page.getByText("故事创作语言：中文")).toBeVisible();
@@ -74,6 +76,10 @@ test("English/Chinese switching covers every page, preserves drafts and ratings,
   ).toEqual([]);
   round.state = "VOTING";
   await page.goto("/vote");
+  await page
+    .getByRole("button", { name: "阅读与投票", exact: false })
+    .first()
+    .click();
 
   await page.getByLabel("5 星：非常喜欢").check();
   await page.getByRole("button", { name: "English", exact: true }).click();
@@ -82,13 +88,15 @@ test("English/Chinese switching covers every page, preserves drafts and ratings,
   await page.route("**/api/votes", (r) =>
     r.fulfill({ status: 409, json: { error: "Voting is closed." } }),
   );
-  await page.getByRole("button", { name: "提交投票", exact: true }).click();
+  await page.getByRole("button", { name: "提交我的评分", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("投票已关闭。");
   await page.getByRole("button", { name: "English", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Voting is closed.");
   await page.getByRole("button", { name: "中文", exact: true }).click();
   await page.goto("/leaderboard");
-  await expect(page.getByRole("heading", { name: "实时排行榜" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Prompt Olympics 排行榜" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("columnheader", { name: "公众评分" }),
   ).toBeVisible();
@@ -120,9 +128,9 @@ test("English/Chinese switching covers every page, preserves drafts and ratings,
       ),
     )
     .toBe(true);
-  await page.getByRole("button", { name: "全屏展示" }).click();
+  await page.getByRole("button", { name: "大屏展示模式" }).click();
   await expect(page.locator(".projector")).toBeVisible();
-  await page.getByRole("button", { name: "退出展示模式" }).click();
+  await page.getByRole("button", { name: "退出大屏展示" }).click();
   await page.goto("/admin");
   await page.route("**/api/admin/competition", async (route) => {
     const response = await route.fetch();

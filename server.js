@@ -179,21 +179,35 @@ export function createApp({
     inflight = null;
   async function leaderboardData(payload = {}) {
     const data = await call("leaderboard", payload);
-    if (!repository.leaderboardStories || !data.entries?.length) return data;
-    const stories = await repository.leaderboardStories(
-      data.entries.map((e) => e.submissionId),
-    );
     return {
       ...data,
-      entries: data.entries.map((e) => ({
-        ...e,
-        story:
-          typeof e.story === "string"
-            ? e.story
-            : stories.get(e.submissionId) || null,
-      })),
+      entries: data.entries.map(({ story, resultText, ...entry }) => entry),
     };
   }
+  app.get(
+    "/api/leaderboard/story/:id",
+    route(async (req, res) => {
+      const id = text(req.params.id, 120, "a story identifier");
+      const payload = req.query.roundId
+        ? { roundId: text(req.query.roundId, 120, "a round identifier") }
+        : {};
+      const data = await call("leaderboard", payload);
+      const entry = data.entries.find((e) => e.submissionId === id);
+      if (!entry) throw new DomainError("Story not found.", 404);
+      const story =
+        typeof entry.story === "string"
+          ? entry.story
+          : (await repository.leaderboardStories?.([id]))?.get(id);
+      res.set("Cache-Control", "private, max-age=300");
+      res.json({
+        id,
+        title: entry.title,
+        participantName: entry.participantName,
+        story: story || null,
+      });
+    }),
+  );
+
   async function leaderboard() {
     if (cache && cache.expires > Date.now()) return cache;
     if (!inflight)

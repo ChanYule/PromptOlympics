@@ -1,4 +1,63 @@
 export const zh: Record<string, string> = {
+  "Your vote has not been confirmed yet. Please check it before continuing.":
+    "你的投票尚未确认，请先确认投票结果再继续。",
+  "Provisional · A story by {name}": "暂定成绩 · 作者：{name}",
+  "Create Your Funny Story": "创作你的搞笑故事",
+  "Share your idea and let AI turn it into a funny story.":
+    "分享你的创意，让 AI 把它变成一个搞笑故事。",
+  "Your Name": "你的名字",
+  "Your Idea": "你的创意",
+  "Your Story": "你的故事",
+  "What should we call you?": "我们该怎么称呼你？",
+  "Use your first name or a fun nickname.":
+    "可以用你的名字，也可以取个有趣的昵称。",
+  "What should happen in your story?": "你希望故事里发生什么事？",
+  "Tell us your funniest idea. AI will turn it into a short story.":
+    "写下你最有趣的点子，AI 会把它变成一个短篇故事。",
+  "Replace your current idea with this suggestion?":
+    "要用这个建议替换你已输入的创意吗？",
+  "Create My Funny Story": "创作我的搞笑故事",
+  "Find a story that catches your eye. Read it, then share your rating.":
+    "挑一个吸引你的故事，读完后给它评分。",
+  "Vote Recorded": "投票已记录",
+  "Back to stories": "返回故事列表",
+  "Select a rating to continue": "请先选择星级",
+  "Read Another Story": "再读一个故事",
+  "Provisional standings": "暂定排名",
+  Rank: "名次",
+  Participant: "参与者",
+  Story: "故事",
+  "AI Score": "AI 评分",
+  "Public Score": "公众评分",
+  "Total Score": "综合评分",
+  "Prompt Olympics Leaderboard": "Prompt Olympics 排行榜",
+  "See which funny stories are leading!": "看看哪些搞笑故事暂时领先！",
+  "Exit Presentation": "退出大屏展示",
+  "Presentation Mode": "大屏展示模式",
+  "Updated at {time}": "更新于 {time}",
+  "Refresh Now": "立即刷新",
+  "Connection interrupted. Showing the last confirmed rankings.":
+    "连接暂时中断，现显示上次确认的排名。",
+  "Final Score = 50% AI + 50% Public Votes":
+    "综合评分 = 50% AI 评分 + 50% 公众评分",
+  "How rankings work": "排名怎么算？",
+  "At least {count} public votes are needed to qualify for the final awards.":
+    "每个故事至少获得 {count} 张公众选票，才有资格角逐最终奖项。",
+  "Rank {rank}": "第 {rank} 名",
+  "The next great story could be yours": "下一个精彩故事，也许就出自你的创意",
+  "Stories are being created. Public votes will determine the rankings!":
+    "故事陆续登场，公众投票将决定排名！",
+  "Award standings": "符合获奖资格的排名",
+  "Live scores. Awards are confirmed after enough public votes.":
+    "这是实时暂定成绩。故事须获得足够的公众选票，才能确认获奖资格。",
+  "Submitting your vote...": "正在提交你的投票……",
+  "Thank you for voting!": "谢谢你的投票！",
+  "Loading story...": "正在加载故事……",
+  "Your rating: {rating} out of 5 stars": "你的评分：{rating} 星（满分 5 星）",
+  "A robot orders kopi": "机器人点咖啡",
+  "A chicken becomes a CEO": "小鸡当上总裁",
+  "An uncle joins a K-pop group": "一位叔叔加入韩流组合",
+  "A cat becomes a school principal": "猫咪当上校长",
   "Stories on the leaderboard": "排行榜上的故事",
   "Story spotlight": "故事展示",
   "Previous story": "上一个故事",

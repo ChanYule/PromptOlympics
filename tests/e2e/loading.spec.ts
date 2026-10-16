@@ -37,9 +37,9 @@ test("loading view shows live stages, survives reload, switches language and rev
     r.fulfill({ json: job() }),
   );
   await page.goto("/play");
-  await page.getByLabel("1. What name").fill("Alice");
-  await page.getByLabel("2. What happens").fill("A robot makes soup");
-  await page.getByRole("button", { name: "Create and save my story" }).click();
+  await page.getByLabel("What should we call").fill("Alice");
+  await page.getByLabel("What should happen").fill("A robot makes soup");
+  await page.getByRole("button", { name: "Create My Funny Story" }).click();
   await expect(
     page.getByRole("heading", { name: "Your story is on its way" }),
   ).toBeFocused();
@@ -49,8 +49,8 @@ test("loading view shows live stages, survives reload, switches language and rev
       .filter({ hasText: "Your request is in the queue" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Create and save my story" }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Creating your story" }),
+  ).toBeDisabled();
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Your story is on its way" }),

@@ -418,7 +418,7 @@ test("readiness rejects a production database missing the booth migration", asyn
   }
 });
 
-test("leaderboard API includes only the matching story text, including historic rounds", async () => {
+test("leaderboard polling excludes story bodies; selected stories are fetched separately, including historic rounds", async () => {
   const calls = [];
   const service = createApp({
     env,
@@ -458,10 +458,14 @@ test("leaderboard API includes only the matching story text, including historic 
     ]) {
       const response = await c.request(url);
       assert.equal(response.status, 200);
-      assert.equal(
-        response.data.entries[0].story,
-        "The complete official story.",
+      assert.equal(response.data.entries[0].story, undefined);
+      const body = await c.request(
+        "/api/leaderboard/story/official-id" +
+          (url.includes("?") ? "?roundId=historic" : ""),
       );
+      assert.equal(body.data.story, "The complete official story.");
+      const missing = await c.request("/api/leaderboard/story/not-public");
+      assert.equal(missing.status, 404);
       assert.equal(JSON.stringify(response.data).includes("sessionId"), false);
     }
     assert.ok(

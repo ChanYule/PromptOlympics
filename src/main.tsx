@@ -1,3 +1,5 @@
+import { GeneratedVote } from "./GeneratedVote";
+import { RatingStars } from "./RatingStars";
 import { LeaderboardStories } from "./LeaderboardStories";
 import { Booth } from "./Booth";
 import React, { useEffect, useRef, useState } from "react";
@@ -29,17 +31,11 @@ const labels: Record<RoundState, string> = {
   VOTING: "Public voting is open",
   RESULTS: "Final results published",
 };
-const ratings = [
-  "Not for me",
-  "A little funny",
-  "Enjoyable",
-  "Funny",
-  "Loved it",
-];
 const examples = [
-  "A robot takes everything literally at a family dinner.",
-  "A grandmother becomes a professional wrestler.",
-  "A cat accidentally becomes mayor.",
+  "A robot orders kopi",
+  "A chicken becomes a CEO",
+  "An uncle joins a K-pop group",
+  "A cat becomes a school principal",
 ];
 const score = (n: number | null | undefined) =>
   n == null ? "—" : n.toFixed(2);
@@ -121,32 +117,41 @@ function App() {
           {t("Organisers")}{" "}
         </a>
       </header>
-      <div className="language-switch" role="group" aria-label={t("Language")}>
-        <button
-          lang="en"
-          aria-pressed={language === "en"}
-          onClick={() => setLanguage("en")}
+      <div className="utility-bar">
+        <div
+          className="language-switch"
+          role="group"
+          aria-label={t("Language")}
         >
-          English
-        </button>
-        <button
-          lang="zh-Hans"
-          aria-pressed={language === "zh"}
-          onClick={() => setLanguage("zh")}
-        >
-          中文
-        </button>
-      </div>
-      <div className="accessibility" aria-label={t("Reading settings")}>
-        <button aria-pressed={large} onClick={() => setLarge(!large)}>
-          {t("Aa Larger text")}{" "}
-        </button>
-        <button aria-pressed={contrast} onClick={() => setContrast(!contrast)}>
-          {t("High contrast")}{" "}
-        </button>
-        <button aria-pressed={reduced} onClick={() => setReduced(!reduced)}>
-          {t("Less movement")}{" "}
-        </button>
+          <button
+            lang="en"
+            aria-pressed={language === "en"}
+            onClick={() => setLanguage("en")}
+          >
+            English
+          </button>
+          <button
+            lang="zh-Hans"
+            aria-pressed={language === "zh"}
+            onClick={() => setLanguage("zh")}
+          >
+            中文
+          </button>
+        </div>
+        <div className="accessibility" aria-label={t("Reading settings")}>
+          <button aria-pressed={large} onClick={() => setLarge(!large)}>
+            {t("Aa Larger text")}{" "}
+          </button>
+          <button
+            aria-pressed={contrast}
+            onClick={() => setContrast(!contrast)}
+          >
+            {t("High contrast")}{" "}
+          </button>
+          <button aria-pressed={reduced} onClick={() => setReduced(!reduced)}>
+            {t("Less movement")}{" "}
+          </button>
+        </div>
       </div>
       <main
         id="main"
@@ -440,16 +445,31 @@ function Play({
     [],
   );
   return (
-    <div className="content narrow">
+    <div className="content narrow creation-page">
       <div className="page-title">
         <p className="eyebrow">{t("Your imagination starts here")}</p>
-        <h1>{t("Create a Story")}</h1>
+        <h1>{t("Create Your Funny Story")}</h1>
+        <p className="intro">
+          {t("Share your idea and let AI turn it into a funny story.")}
+        </p>
         <RoundStatus round={round.data} />
       </div>
-      <ol className="progress">
-        <li className={name ? "done" : ""}>{t("1. Your name")}</li>
-        <li className={prompt ? "done" : ""}>{t("2. Your idea")}</li>
-        <li className={story ? "done" : ""}>{t("3. Read & share")}</li>
+      <ol className="creation-stepper" aria-label={t("Story progress")}>
+        {[t("Your Name"), t("Your Idea"), t("Your Story")].map((label, i) => {
+          const active = story || loading ? 2 : name.trim() ? 1 : 0;
+          return (
+            <li
+              key={i}
+              className={
+                i < active ? "complete" : i === active ? "active" : "upcoming"
+              }
+              aria-current={i === active ? "step" : undefined}
+            >
+              <span aria-hidden="true">{i < active ? "\u2713" : i + 1}</span>
+              {label}
+            </li>
+          );
+        })}
       </ol>
       <Feedback error={error || round.error} />
       {recover && (
@@ -466,7 +486,7 @@ function Play({
       {job?.status === "failed" && (
         <button onClick={retryFailed}>{t("Retry this story request")}</button>
       )}
-      {loading ? (
+      {loading && (
         <section className="card story-loading" aria-labelledby="loading-title">
           <div className="story-spinner" aria-hidden="true" />
           <h2 id="loading-title" ref={loadingHeading} tabIndex={-1}>
@@ -481,6 +501,10 @@ function Play({
                 ? t("Your story is written. Saving it to the competition…")
                 : t("Turning your idea into a story…")}
           </p>
+          <div className="generation-details">
+            <strong>{name}</strong>
+            <p>{prompt}</p>
+          </div>
           <ol className="story-loading-steps" aria-label={t("Story progress")}>
             <li className="done">{t("Idea received")}</li>
             <li aria-current={job?.status !== "saving" ? "step" : undefined}>
@@ -494,7 +518,8 @@ function Play({
             {t("Please keep this page open. You do not need to submit again.")}
           </p>
         </section>
-      ) : story ? (
+      )}
+      {story ? (
         <article className="card story-result">
           <div className="story-meta">
             <span>{story.participantName}</span>
@@ -517,9 +542,13 @@ function Play({
                 ? t("Story saved. AI judging needs an organiser’s attention.")
                 : t("Story saved. AI judging in progress…")}
           </div>
-          <a className="button primary full" href="/vote">
-            {t("Continue to Read and Vote")}
-          </a>
+          <GeneratedVote
+            key={story.id}
+            story={story}
+            round={round.data}
+            jobId={job!.id}
+            onFinished={booth ? onFinished : undefined}
+          />
           {!booth && (
             <div className="actions">
               <button
@@ -545,7 +574,8 @@ function Play({
         </article>
       ) : (
         <form
-          className="card"
+          className="card creation-form"
+          aria-busy={busy}
           onSubmit={(e) => {
             e.preventDefault();
             void generate();
@@ -558,14 +588,8 @@ function Play({
                 : "Story language: English",
             )}
           </p>
-          <label htmlFor="nickname">
-            {t("1. What name would you like to use?")}
-          </label>
-          <p className="hint">
-            {t(
-              "Your first name or a nickname will appear beside your story.",
-            )}{" "}
-          </p>
+          <label htmlFor="nickname">{t("What should we call you?")}</label>
+          <p className="hint">{t("Use your first name or a fun nickname.")} </p>
           <div className="input-row">
             <input
               id="nickname"
@@ -594,8 +618,14 @@ function Play({
               {t("Suggest a name")}{" "}
             </button>
           </div>
-          <label htmlFor="idea">{t("2. What happens in your story?")}</label>
+          <label htmlFor="idea">{t("What should happen in your story?")}</label>
+          <p className="hint" id="idea-help">
+            {t(
+              "Tell us your funniest idea. AI will turn it into a short story.",
+            )}
+          </p>
           <textarea
+            aria-describedby="idea-help idea-count"
             id="idea"
             value={prompt}
             maxLength={700}
@@ -607,21 +637,29 @@ function Play({
               "A robot arrives at a family dinner and takes everything literally…",
             )}
           />
-          <p className="hint">
+          <p className="hint" id="idea-count">
             {t(
               "{count} / 700 characters · Who is there? Where are they? What goes wrong?",
               { count: prompt.length },
             )}
           </p>
-          <details>
-            <summary>{t("Need an idea?")}</summary>
+          <section className="inspiration" aria-label={t("Need an idea?")}>
+            <h3>{t("Need an idea?")}</h3>
             <div className="suggestions">
               {examples.map((x) => (
                 <button
                   type="button"
                   key={x}
                   disabled={busy}
-                  onClick={() => setPrompt(t(x))}
+                  onClick={() => {
+                    if (
+                      !prompt.trim() ||
+                      window.confirm(
+                        t("Replace your current idea with this suggestion?"),
+                      )
+                    )
+                      setPrompt(t(x));
+                  }}
                 >
                   {t(x)}
                 </button>
@@ -638,7 +676,7 @@ function Play({
             >
               {t("Add a twist")}{" "}
             </button>
-          </details>
+          </section>
           <button
             className="primary full"
             type="submit"
@@ -650,23 +688,11 @@ function Play({
               round.data?.state !== "SUBMISSIONS_OPEN"
             }
           >
-            {busy
-              ? t("Creating your story…")
-              : booth
-                ? t("Generate My Story")
-                : t("Create and save my story")}
+            <svg className="button-icon" aria-hidden="true" viewBox="0 0 24 24">
+              <path d="m4 20 11-11 3 3-11 11M16 3v4m-2-2h4M6 4v4M4 6h4M19 16v4m-2-2h4" />
+            </svg>
+            {busy ? t("Creating your story…") : t("Create My Funny Story")}
           </button>
-          {busy && (
-            <p className="notice" role="status">
-              {job?.status === "queued"
-                ? t(
-                    "Many stories are being created right now. Your request is in the queue.",
-                  )
-                : job?.status === "saving"
-                  ? t("Saving your story…")
-                  : t("Creating your story. Your idea is safely kept here.")}
-            </p>
-          )}
         </form>
       )}
     </div>
@@ -736,6 +762,19 @@ function Vote() {
       setBusy(false);
     }
   }
+  const [selected, setSelected] = useState<string | null>(null);
+  const readerHeading = useRef<HTMLHeadingElement>(null);
+  const galleryButtons = useRef<Record<string, HTMLButtonElement | null>>({});
+  useEffect(() => {
+    if (selected) readerHeading.current?.focus();
+  }, [selected]);
+  function backToGallery() {
+    const id = selected;
+    setSelected(null);
+    requestAnimationFrame(() => {
+      if (id) galleryButtons.current[id]?.focus();
+    });
+  }
   const boothParticipant = readSaved("booth-started", false);
   async function finishBoothParticipant() {
     if (busy || pending) return;
@@ -783,8 +822,8 @@ function Vote() {
         <RoundStatus round={round.data} />
       </div>
       <Feedback error={error || list.error || round.error} />
-      <section className="notice">
-        <p>
+      <section className="handoff-strip">
+        <p className="hint" hidden={!!selected}>
           {boothParticipant
             ? t(
                 "Rate stories here, then choose Finish and Start Next Participant before handing over this device.",
@@ -832,19 +871,21 @@ function Vote() {
           {t("Retry participant reset")}
         </button>
       )}
-      <p className="notice">
+      <p className="hint" hidden={!!selected}>
         {t(
           "Voting stays open while stories are being created and until final results are published.",
         )}
       </p>
       {pending && (
         <div className="notice">
-          <p>
-            {t(
-              "A vote is awaiting confirmation. Retry uses the same request key and cannot add a second vote.",
-            )}{" "}
+          <p role="status">
+            {busy
+              ? t("Submitting your vote...")
+              : t(
+                  "Your vote has not been confirmed yet. Please check it before continuing.",
+                )}
           </p>
-          {!items.some((s) => s.id === pending.storyId) && (
+          {selected !== pending.storyId && (
             <button disabled={busy} onClick={() => submit(pending)}>
               {t("Check and confirm my vote")}
             </button>
@@ -876,9 +917,9 @@ function Vote() {
         </form>
       )}
       <>
-        <p className="intro">
+        <p className="intro" hidden={!!selected}>
           {t(
-            "Read the full stories below and give each one a rating from 1 to 5 stars.",
+            "Find a story that catches your eye. Read it, then share your rating.",
           )}
         </p>
         {!list.data && !list.error && (
@@ -891,126 +932,148 @@ function Vote() {
             <button onClick={list.refresh}>{t("Check for stories")}</button>
           </div>
         )}
-        <div className="story-grid">
-          {items.map((s) => {
-            const voted = confirmed[s.id] !== undefined || !!s.voted;
-            const currentRating =
-              confirmed[s.id] ??
-              (s.voted
-                ? s.rating || 0
-                : (drafts[s.id] ??
-                  (pending?.storyId === s.id ? pending.rating : 0)));
-            const blocked =
-              !votingOpen ||
-              (s.own && round.data?.allowSelfVotes === false) ||
-              (!!round.data?.strictCodes && !round.data.verified);
-            return (
-              <article
-                key={s.id}
-                className="card vote-card inline-story"
-                aria-labelledby={"story-" + s.id}
-              >
-                <p className="eyebrow">
-                  {t("A story by {name}", { name: s.participantName })}
-                </p>
-                <h2 id={"story-" + s.id}>{s.title}</h2>
-                <p
-                  className="story-text"
-                  lang={/\p{Script=Han}/u.test(s.resultText) ? "zh-Hans" : "en"}
+        <div
+          className={selected ? "focused-story" : "story-grid discovery-grid"}
+        >
+          {items
+            .filter((s) => !selected || s.id === selected)
+            .map((s) => {
+              const voted = confirmed[s.id] !== undefined || !!s.voted;
+              const currentRating =
+                confirmed[s.id] ??
+                (s.voted
+                  ? s.rating || 0
+                  : (drafts[s.id] ??
+                    (pending?.storyId === s.id ? pending.rating : 0)));
+              const blocked =
+                !votingOpen ||
+                (s.own && round.data?.allowSelfVotes === false) ||
+                (!!round.data?.strictCodes && !round.data.verified);
+              if (!selected)
+                return (
+                  <article key={s.id} className="card discovery-card">
+                    <p className="eyebrow">{s.participantName}</p>
+                    <h2>{s.title}</h2>
+                    <p className="excerpt">
+                      {s.resultText.length > 170
+                        ? s.resultText.slice(0, 170) + "\u2026"
+                        : s.resultText}
+                    </p>
+                    {voted && (
+                      <span className="badge">{t("Vote Recorded")}</span>
+                    )}
+                    <button
+                      ref={(node) => {
+                        galleryButtons.current[s.id] = node;
+                      }}
+                      className="primary"
+                      onClick={() => setSelected(s.id)}
+                    >
+                      {t("Read and Vote")}
+                      <span className="sr-only">: {s.title}</span>
+                      <span aria-hidden="true">&#8594;</span>
+                    </button>
+                  </article>
+                );
+              return (
+                <article
+                  key={s.id}
+                  className="card vote-card inline-story"
+                  aria-labelledby={"story-" + s.id}
                 >
-                  {s.resultText}
-                </p>
-                <fieldset disabled={busy || !!pending || voted || blocked}>
-                  <legend>{t("How funny was this story?")}</legend>
-                  <div
-                    className="stars"
-                    role="radiogroup"
-                    aria-label={t("Story rating")}
-                  >
-                    {ratings.map((label, i) => (
-                      <label
-                        key={label}
-                        className={currentRating >= i + 1 ? "chosen" : ""}
-                      >
-                        <input
-                          type="radio"
-                          name={"rating-" + s.id}
-                          value={i + 1}
-                          checked={currentRating === i + 1}
-                          onChange={() => {
-                            setDrafts((values) => ({
-                              ...values,
-                              [s.id]: i + 1,
-                            }));
-                            setError("");
-                          }}
-                        />
-                        <span aria-hidden="true">★</span>
-                        <span className="sr-only">
-                          {t(
-                            i === 0
-                              ? "{count} star: {label}"
-                              : "{count} stars: {label}",
-                            { count: i + 1, label: t(label) },
-                          )}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                  <p className="hint">
-                    {currentRating
-                      ? `${currentRating} / 5 · ${t(ratings[currentRating - 1])}`
-                      : t("Choose 1 to 5 stars.")}
+                  <p className="eyebrow">
+                    {t("A story by {name}", { name: s.participantName })}
                   </p>
-                </fieldset>
-                {voted && (
-                  <p className="notice success" role="status">
-                    {confirmed[s.id] !== undefined
-                      ? t("Your vote is recorded. Thank you!")
-                      : t("Your {rating}-star vote is recorded.", {
-                          rating: currentRating,
-                        })}
-                  </p>
-                )}
-                {pending?.storyId === s.id ? (
-                  <button
-                    className="primary full"
-                    disabled={busy}
-                    onClick={() => submit(pending)}
-                  >
-                    {busy
-                      ? t("Recording your vote…")
-                      : t("Check and confirm my vote")}
+                  <button className="back-button" onClick={backToGallery}>
+                    &#8592; {t("Back to stories")}
                   </button>
-                ) : (
-                  !voted && (
+                  <h2 ref={readerHeading} tabIndex={-1} id={"story-" + s.id}>
+                    {s.title}
+                  </h2>
+                  <p
+                    className="story-text"
+                    lang={
+                      /\p{Script=Han}/u.test(s.resultText) ? "zh-Hans" : "en"
+                    }
+                  >
+                    {s.resultText}
+                  </p>
+                  <RatingStars
+                    id={s.id}
+                    value={currentRating}
+                    disabled={busy || !!pending || voted || blocked}
+                    onChange={(value) => {
+                      setDrafts((values) => ({ ...values, [s.id]: value }));
+                      setError("");
+                    }}
+                  />
+                  {voted && (
+                    <p className="notice success" role="status">
+                      {confirmed[s.id] !== undefined
+                        ? t("Your vote is recorded. Thank you!")
+                        : t("Your {rating}-star vote is recorded.", {
+                            rating: currentRating,
+                          })}
+                    </p>
+                  )}
+                  {pending?.storyId === s.id ? (
                     <button
                       className="primary full"
-                      disabled={!currentRating || busy || !!pending || blocked}
-                      onClick={() =>
-                        submit({
-                          key: crypto.randomUUID(),
-                          storyId: s.id,
-                          rating: currentRating,
-                        })
-                      }
+                      disabled={busy}
+                      onClick={() => submit(pending)}
                     >
-                      {t("Submit Vote")}
+                      {busy
+                        ? t("Submitting your vote...")
+                        : t("Check and confirm my vote")}
                     </button>
-                  )
-                )}
-                {s.own && round.data?.allowSelfVotes === false && (
-                  <p className="notice">
-                    {t(
-                      "Independent voting mode does not allow ratings of your own story.",
-                    )}
-                  </p>
-                )}
-              </article>
-            );
-          })}
+                  ) : (
+                    !voted && (
+                      <button
+                        className="primary full"
+                        disabled={
+                          !currentRating || busy || !!pending || blocked
+                        }
+                        onClick={() =>
+                          submit({
+                            key: crypto.randomUUID(),
+                            storyId: s.id,
+                            rating: currentRating,
+                          })
+                        }
+                      >
+                        {currentRating
+                          ? t("Submit My Vote")
+                          : t("Select a rating to continue")}
+                      </button>
+                    )
+                  )}
+                  {voted && (
+                    <button className="primary full" disabled>
+                      {t("Vote Recorded")}
+                    </button>
+                  )}
+                  {!votingOpen && (
+                    <p className="hint">
+                      {t("Voting is not open for this round yet.")}
+                    </p>
+                  )}
+                  {voted && (
+                    <button className="full" onClick={backToGallery}>
+                      {t("Read Another Story")}
+                    </button>
+                  )}
+                  {s.own && round.data?.allowSelfVotes === false && (
+                    <p className="notice">
+                      {t(
+                        "Independent voting mode does not allow ratings of your own story.",
+                      )}
+                    </p>
+                  )}
+                </article>
+              );
+            })}
         </div>
-        <div className="actions">
+        <div className="actions" hidden={!!selected}>
           <button
             disabled={offset === 0 || busy || !!pending}
             onClick={() => setOffset(Math.max(0, offset - 20))}
@@ -1043,6 +1106,31 @@ function Leaderboard() {
   );
   const [projector, setProjector] = useState(false);
   useEffect(() => {
+    if (!projector) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const surroundings = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".topbar, .utility-bar, footer, .skip",
+      ),
+    );
+    const states = surroundings.map((element) => element.inert);
+    surroundings.forEach((element) => {
+      element.inert = true;
+    });
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document
+      .querySelector<HTMLButtonElement>(".leaderboard-heading button")
+      ?.focus();
+    return () => {
+      surroundings.forEach((element, index) => {
+        element.inert = states[index];
+      });
+      document.body.style.overflow = overflow;
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [projector]);
+  useEffect(() => {
     const listener = () => {
       if (!document.fullscreenElement) setProjector(false);
     };
@@ -1066,109 +1154,199 @@ function Leaderboard() {
       }
     }
   }
+  const eligible = data?.entries.filter((e) => e.eligible) || [];
+  const provisional = data?.entries.filter((e) => !e.eligible) || [];
+  function standings(entries: Rankings["entries"], official: boolean) {
+    return (
+      <div
+        className="rankings event-rankings"
+        role="table"
+        aria-label={
+          official ? t("Competition rankings") : t("Provisional standings")
+        }
+      >
+        <div className="rank-row table-heading" role="row">
+          {[
+            t("Rank"),
+            t("Participant"),
+            t("Story"),
+            t("AI Score"),
+            t("Public Score"),
+            t("Total Score"),
+            t("Votes"),
+          ].map((label) => (
+            <span key={label} role="columnheader">
+              {label}
+            </span>
+          ))}
+        </div>
+        {entries.map((e, i) => (
+          <div
+            className={"rank-row " + (official && i < 3 ? "eligible-top" : "")}
+            key={e.submissionId}
+            role="row"
+          >
+            <span className="rank-number" role="cell">
+              {official ? String(i + 1).padStart(2, "0") : "\u2014"}
+            </span>
+            <strong className="participant-cell" role="cell">
+              {e.participantName}
+              <small>{official ? t("Award eligible") : t("Provisional")}</small>
+            </strong>
+            <span className="title-cell" role="cell">
+              {e.title}
+              {e.aiScore == null && (
+                <small>
+                  {t("AI judging {status}", { status: t(e.judgingStatus) })}
+                </small>
+              )}
+            </span>
+            <span className="metric" role="cell">
+              <small>{t("AI Score")}</small>
+              {score(e.aiScore)}
+            </span>
+            <span className="metric" role="cell">
+              <small>{t("Public Score")}</small>
+              {score(e.averageScore)}
+            </span>
+            <strong className="metric total-score" role="cell">
+              <small>{t("Total Score")}</small>
+              {score(e.finalScore)}
+            </strong>
+            <span className="metric" role="cell">
+              <small>{t("Votes")}</small>
+              {e.voteCount}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <section
       className={`content leaderboard-screen ${projector ? "projector" : ""}`}
     >
-      <div className="page-title">
+      <div className="page-title leaderboard-heading">
         <div>
-          <p className="eyebrow">{t("The crowd meets the comedy judge")}</p>
-          <h1>{data?.final ? t("Final Results") : t("Live Leaderboard")}</h1>
+          <p className="eyebrow">{t("Prompt Olympics")}</p>
+          <h1>{t("Prompt Olympics Leaderboard")}</h1>
+          <p className="intro">{t("See which funny stories are leading!")}</p>
           <RoundStatus round={data?.round || null} />
         </div>
         <button onClick={fullscreen}>
-          {projector ? t("Exit presentation") : t("Present fullscreen")}
+          {projector ? t("Exit Presentation") : t("Presentation Mode")}
         </button>
       </div>
       <div className="refresh-line">
         <span>
           {updated
-            ? t("Last checked {time}", {
-                time: updated.toLocaleTimeString(getLocale()),
+            ? t("Updated at {time}", {
+                time: updated.toLocaleTimeString(getLocale(), {
+                  hour: "numeric",
+                  minute: "2-digit",
+                }),
               })
-            : t("Loading the latest confirmed rankings…")}
+            : t("Loading the latest confirmed rankings\u2026")}
         </span>
-        <button onClick={refresh}>{t("Refresh now")}</button>
+        <button onClick={refresh}>{t("Refresh Now")}</button>
       </div>
-      <Feedback error={error} />
-      {error && data && (
-        <p className="hint">
-          {t("The last confirmed rankings remain visible.")}
+      {error && (
+        <p className="refresh-error" role="status">
+          {data
+            ? t("Connection interrupted. Showing the last confirmed rankings.")
+            : message(error)}
         </p>
       )}
-      <p className="hint">
-        {t(
-          "50% AI + 50% public average. Public votes required for award eligibility: {count}. Ties: public score, AI score, vote count, then story ID.",
-          { count: data?.round.minVotes || 5 },
-        )}
+      <p className="scoring-summary">
+        {t("Final Score = 50% AI + 50% Public Votes")}
       </p>
+      <details className="scoring-details">
+        <summary>{t("How rankings work")}</summary>
+        <p>
+          {t(
+            "At least {count} public votes are needed to qualify for the final awards.",
+            { count: data?.round.minVotes ?? 5 },
+          )}
+        </p>
+        <p>
+          {t(
+            "50% AI + 50% public average. Public votes required for award eligibility: {count}. Ties: public score, AI score, vote count, then story ID.",
+            { count: data?.round.minVotes ?? 5 },
+          )}
+        </p>
+      </details>
       {data && (
         <>
+          {eligible.length ? (
+            <div className="podium event-podium">
+              {eligible.slice(0, 3).map((e, i) => (
+                <article
+                  key={e.submissionId}
+                  className={`podium-card place-${i + 1}`}
+                >
+                  <span
+                    className="medal"
+                    aria-label={t("Rank {rank}", { rank: i + 1 })}
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                      <path d="M8 3h8v6a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4M12 13v5m-4 3h8m-6-3h4v3" />
+                    </svg>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="badge">
+                    {data.final ? t("Final Results") : t("Award eligible")}
+                  </span>
+                  <h2>{e.participantName}</h2>
+                  <p>{e.title}</p>
+                  <strong>
+                    {score(e.finalScore)}
+                    <small> / 5</small>
+                  </strong>
+                  <div className="score-detail">
+                    {t("AI {ai} \u00b7 Public {public} \u00b7 {count} votes", {
+                      ai: score(e.aiScore),
+                      public: score(e.averageScore),
+                      count: e.voteCount,
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="ranking-waiting">
+              <h2>{t("The next great story could be yours")}</h2>
+              <p>
+                {t(
+                  "Stories are being created. Public votes will determine the rankings!",
+                )}
+              </p>
+              <small>
+                {t(
+                  "At least {count} public votes are needed to qualify for the final awards.",
+                  { count: data.round.minVotes },
+                )}
+              </small>
+            </div>
+          )}
           <div className="leaderboard-layout">
             <div className="leaderboard-results">
-              <div className="podium">
-                {data.entries.slice(0, 3).map((e, i) => (
-                  <article
-                    key={e.submissionId}
-                    className={`podium-card place-${i + 1}`}
-                  >
-                    <span className="medal">{["01", "02", "03"][i]}</span>
-                    <p>{e.eligible ? t("Award eligible") : t("Provisional")}</p>
-                    <h2>{e.participantName}</h2>
-                    <p>{e.title}</p>
-                    <strong>
-                      {score(e.finalScore)}
-                      <small> / 5</small>
-                    </strong>
-                    <div className="score-detail">
-                      {t("AI {ai} · Public {public} · {count} votes", {
-                        ai: score(e.aiScore),
-                        public: score(e.averageScore),
-                        count: e.voteCount,
-                      })}
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <div
-                className="rankings"
-                role="table"
-                aria-label={t("Competition rankings")}
-              >
-                <div className="rank-row table-heading" role="row">
-                  <span role="columnheader">{t("Rank / Participant")}</span>
-                  <span role="columnheader">{t("AI")}</span>
-                  <span role="columnheader" aria-label={t("Public")}>
-                    {getLanguage() === "zh" ? t("Public short") : t("Public")}
-                  </span>
-                  <span role="columnheader">{t("Total")}</span>
-                  <span role="columnheader">{t("Votes")}</span>
-                </div>
-                {data.entries.map((e, i) => (
-                  <div className="rank-row" key={e.submissionId} role="row">
-                    <div role="cell">
-                      <b className="rank-number">{i + 1}</b>
-                      <span>
-                        <strong>{e.participantName}</strong>
-                        <small>
-                          {e.title} ·{" "}
-                          {e.eligible
-                            ? t("Award eligible")
-                            : e.aiScore == null
-                              ? t("AI judging {status}", {
-                                  status: t(e.judgingStatus),
-                                })
-                              : t("Provisional")}
-                        </small>
-                      </span>
-                    </div>
-                    <span role="cell">{score(e.aiScore)}</span>
-                    <span role="cell">{score(e.averageScore)}</span>
-                    <strong role="cell">{score(e.finalScore)}</strong>
-                    <span role="cell">{e.voteCount}</span>
-                  </div>
-                ))}
-              </div>
+              {!!eligible.length && (
+                <section>
+                  <h2>{t("Award standings")}</h2>
+                  {standings(eligible, true)}
+                </section>
+              )}
+              {!!provisional.length && (
+                <section className="provisional-standings">
+                  <h2>{t("Provisional standings")}</h2>
+                  <p className="hint">
+                    {t(
+                      "Live scores. Awards are confirmed after enough public votes.",
+                    )}
+                  </p>
+                  {standings(provisional, false)}
+                </section>
+              )}
             </div>
             <LeaderboardStories
               entries={data.entries}
@@ -1183,6 +1361,7 @@ function Leaderboard() {
     </section>
   );
 }
+
 type AdminData = {
   round: Round;
   data: Record<string, any>;

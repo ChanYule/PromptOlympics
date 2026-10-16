@@ -11,7 +11,6 @@ test("big screen rotates full stories, preserves the current story across rankin
     submissionId: id,
     title: "Story " + id,
     participantName: "Author " + id,
-    story: text,
     aiScore: 4,
     averageScore: 5 - i / 10,
     finalScore: 4.5 - i / 20,
@@ -39,12 +38,18 @@ test("big screen rotates full stories, preserves the current story across rankin
           },
     ),
   );
+  const bodyRequests: string[] = [];
+  await page.route("**/api/leaderboard/story/*", (r) => {
+    bodyRequests.push(r.request().url());
+    return r.fulfill({ json: { story: text } });
+  });
+  await page.clock.install();
   await page.goto("/leaderboard");
   const stories = page.getByRole("region", {
     name: "Stories on the leaderboard",
     exact: true,
   });
-  await expect(stories.getByRole("article")).toHaveCount(3);
+  await expect(stories.getByRole("article")).toHaveCount(1);
   await expect(
     stories.getByRole("article").first().locator(".story-text"),
   ).toHaveText(text);
@@ -53,9 +58,8 @@ test("big screen rotates full stories, preserves the current story across rankin
     page.getByRole("region", { name: "排行榜上的故事", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "English", exact: true }).click();
-  await page.clock.install();
   await page
-    .getByRole("button", { name: "Present fullscreen", exact: true })
+    .getByRole("button", { name: "Presentation Mode", exact: true })
     .click();
   const screen = page.locator(".projector"),
     spotlight = screen.locator(".spotlight-story");
@@ -74,10 +78,11 @@ test("big screen rotates full stories, preserves the current story across rankin
     entries[0],
     entries[2],
   ];
-  await page.getByRole("button", { name: "Refresh now", exact: true }).click();
+  await page.clock.fastForward(60001);
   await expect(
     spotlight.getByText("Rank 2 · A story by Author A", { exact: true }),
   ).toBeVisible();
+  expect(bodyRequests).toHaveLength(1);
   await page
     .getByRole("button", { name: "Resume story rotation", exact: true })
     .click();
@@ -95,11 +100,14 @@ test("big screen rotates full stories, preserves the current story across rankin
     .getByRole("button", { name: "Pause story rotation", exact: true })
     .click();
   outage = true;
-  await page.getByRole("button", { name: "Refresh now", exact: true }).click();
+  await page.clock.fastForward(60001);
   await expect(
-    page.getByText("The last confirmed rankings remain visible.", {
-      exact: true,
-    }),
+    page.getByText(
+      "Connection interrupted. Showing the last confirmed rankings.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   await expect(
     spotlight.getByRole("heading", { name: "Story A", exact: true }),
@@ -117,7 +125,7 @@ test("big screen rotates full stories, preserves the current story across rankin
     ).violations,
   ).toEqual([]);
   outage = false;
-  await page.getByRole("button", { name: "Refresh now", exact: true }).click();
+  await page.clock.fastForward(60001);
   await expect(page.getByText("Temporary outage", { exact: true })).toHaveCount(
     0,
   );
@@ -126,9 +134,9 @@ test("big screen rotates full stories, preserves the current story across rankin
     fullPage: true,
   });
   await page
-    .getByRole("button", { name: "Exit presentation", exact: true })
+    .getByRole("button", { name: "Exit Presentation", exact: true })
     .click();
-  await expect(stories.getByRole("article")).toHaveCount(3);
+  await expect(stories.getByRole("article")).toHaveCount(1);
   await page.setViewportSize({ width: 375, height: 812 });
   expect(
     await page.evaluate(

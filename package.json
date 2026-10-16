@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "test:load": "node scripts/load-test.mjs",
     "db:dry-run": "node scripts/import-supabase.js data/competition.json --dry-run",
-    "format:check": "node ./node_modules/prettier/bin/prettier.cjs --check server.js competitionRepository.js competitionStore.js localRepository.js aiService.js aiPrompts.js geminiErrors.js security.js src/main.tsx src/Booth.tsx src/LeaderboardStories.tsx src/styles.css src/api.ts src/types.ts src/useFeed.ts src/scoring.ts src/i18n.ts src/locales/zh.ts tests scripts README.md AUDIT.md SUPABASE_SETUP.md GEMINI_SETUP.md LIVE_EVENT_CHECKLIST.md TROUBLESHOOTING.md package.json render.yaml playwright.config.ts vite.config.ts",
+    "format:check": "node ./node_modules/prettier/bin/prettier.cjs --check server.js competitionRepository.js competitionStore.js localRepository.js aiService.js aiPrompts.js geminiErrors.js security.js src/main.tsx src/Booth.tsx src/LeaderboardStories.tsx src/RatingStars.tsx src/GeneratedVote.tsx src/styles.css src/api.ts src/types.ts src/useFeed.ts src/scoring.ts src/i18n.ts src/locales/zh.ts tests scripts VOTING_FLOW.md UI_REDESIGN_REPORT.md README.md AUDIT.md SUPABASE_SETUP.md GEMINI_SETUP.md LIVE_EVENT_CHECKLIST.md TROUBLESHOOTING.md package.json render.yaml playwright.config.ts vite.config.ts",
     "test:i18n": "node scripts/i18n-audit.mjs"
   },
   "dependencies": {
