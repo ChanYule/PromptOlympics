@@ -15,7 +15,6 @@ test("three consecutive booth participants retain separate stories, scores and v
   await page.getByLabel("Allow participants to rate their own stories").check();
   await page.getByLabel("Minimum votes for awards").fill("1");
   await page.getByRole("button", { name: "Save rules" }).click();
-  await page.getByRole("button", { name: "Start / Open submissions" }).click();
   await display.goto("/leaderboard");
   await page.goto("/booth");
   const participants = [
@@ -151,9 +150,6 @@ test("uncertain booth votes and participant resets reconcile without duplicate r
   page.on("dialog", (d) => d.accept());
 
   await page.getByRole("button", { name: "Save rules", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Start / Open submissions", exact: true })
-    .click();
   await page.goto("/booth");
   await page
     .getByRole("button", { name: "Start Creating My Story", exact: true })
@@ -290,6 +286,12 @@ test("optional inactivity warning resets only idle booth input and never an acti
   await page.route("**/api/jobs/waiting", (r) =>
     r.fulfill({ json: { id: "waiting", status: "queued", submission: null } }),
   );
+  // Advancing the inactivity clock must not expire HTTP deadlines while mocked
+  // responses are still crossing the browser boundary. Network recovery has its
+  // own tests; this case isolates protection of an active generation.
+  await page.evaluate(() => {
+    AbortSignal.timeout = () => new AbortController().signal;
+  });
   await page
     .getByRole("button", { name: "Start Creating My Story", exact: true })
     .click();

@@ -41,10 +41,6 @@ test("booth voting before judging, independent mode, closure and safe participan
       allowSelfVotes: true,
       actor: "admin",
     });
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     const id = await saved(repo);
     await assert.rejects(
       repo.call("session-end", {
@@ -143,10 +139,6 @@ test("booth voting before judging, independent mode, closure and safe participan
       }),
       /Independent voting/,
     );
-    await repo.call("transition", {
-      state: "SUBMISSIONS_CLOSED",
-      actor: "admin",
-    });
     const continuedVote = await repo.call("vote", {
       ...payload,
       sessionId: "third",
@@ -163,10 +155,6 @@ test("booth voting before judging, independent mode, closure and safe participan
 test("reset cannot race accepted generation; ended identities cannot enqueue", async () => {
   const repo = await database();
   try {
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     const input = {
       sessionId: "a",
       id: randomUUID(),
@@ -225,10 +213,6 @@ test("judging timeout preserves the saved story and vote and participant retry r
       strictCodes: false,
       boothMode: true,
       allowSelfVotes: true,
-      actor: "admin",
-    });
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
       actor: "admin",
     });
     const id = await saved(repo, "a");
@@ -292,7 +276,7 @@ test("judging timeout preserves the saved story and vote and participant retry r
   }
 });
 
-test("voting is always open during creation and after submissions close, without booth settings or a voting transition", async () => {
+test("voting stays available during generation and after attempted publication", async () => {
   const repo = await database();
   try {
     await repo.call("settings", {
@@ -302,10 +286,6 @@ test("voting is always open during creation and after submissions close, without
       allowSelfVotes: true,
       actor: "admin",
     });
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     const id = await saved(repo, "author");
     await repo.call("vote", {
       sessionId: "reader-a",
@@ -313,10 +293,6 @@ test("voting is always open during creation and after submissions close, without
       submissionId: id,
       rating: 5,
       idempotencyKey: "during-creation",
-    });
-    await repo.call("transition", {
-      state: "SUBMISSIONS_CLOSED",
-      actor: "admin",
     });
     await repo.call("vote", {
       sessionId: "reader-b",
@@ -342,18 +318,19 @@ test("voting is always open during creation and after submissions close, without
         explanation: "Test",
       },
     });
-    await repo.call("transition", { state: "RESULTS", actor: "admin" });
-    assert.equal((await repo.call("leaderboard")).entries[0].voteCount, 2);
     await assert.rejects(
-      repo.call("vote", {
-        sessionId: "reader-c",
-        id: randomUUID(),
-        submissionId: id,
-        rating: 3,
-        idempotencyKey: "after-results",
-      }),
-      /Voting is closed/,
+      repo.call("transition", { state: "RESULTS", actor: "admin" }),
+      /always open/,
     );
+    assert.equal((await repo.call("leaderboard")).entries[0].voteCount, 2);
+    await repo.call("vote", {
+      sessionId: "reader-c",
+      id: randomUUID(),
+      submissionId: id,
+      rating: 3,
+      idempotencyKey: "still-open",
+    });
+    assert.equal((await repo.call("leaderboard")).entries[0].voteCount, 3);
   } finally {
     await repo.db.close();
   }

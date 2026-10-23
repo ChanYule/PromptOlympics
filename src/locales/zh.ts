@@ -1,4 +1,9 @@
 export const zh: Record<string, string> = {
+  "Always open": "随时开放",
+  "Story creation and voting are always available. Rankings update as people participate.":
+    "随时可以创作故事和投票。排名会随着大家的参与持续更新。",
+  "Submissions and voting are always open. Round changes are not allowed.":
+    "故事创作和投票始终开放，无法更改轮次状态。",
   "Your vote has not been confirmed yet. Please check it before continuing.":
     "你的投票尚未确认，请先确认投票结果再继续。",
   "Provisional · A story by {name}": "暂定成绩 · 作者：{name}",
@@ -367,6 +372,10 @@ export const zh: Record<string, string> = {
     "请输入 {min} 至 {max} 之间的数字。",
 };
 export const errorZh: Record<string, string> = {
+  "Database upgrade required. Ask an organiser to apply migration 006.":
+    "数据库需要升级，请主办方应用迁移 006。",
+  "Submissions and voting are always open. Round changes are not allowed.":
+    "故事创作和投票始终开放，无法更改轮次状态。",
   "Database upgrade required. Ask an organiser to apply migration 005.":
     "数据库需要升级，请联系主办人员执行第 005 号迁移脚本。",
   "Database upgrade required. Ask an organiser to apply migration 004.":

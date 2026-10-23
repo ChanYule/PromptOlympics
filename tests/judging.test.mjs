@@ -34,10 +34,6 @@ test("real Gemini response path persists judging model and score in PostgreSQL",
     },
   };
   try {
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     const queued = await repo.call("enqueue", {
       sessionId: "author",
       idempotencyKey: randomUUID(),

@@ -50,11 +50,8 @@ export function GeneratedVote({
       gone = true;
     };
   }, [story.id]);
-  const open = ["SUBMISSIONS_OPEN", "SUBMISSIONS_CLOSED", "VOTING"].includes(
-    round?.state || "",
-  );
   const blocked =
-    !open ||
+    !round ||
     round?.allowSelfVotes === false ||
     (!!round?.strictCodes && !round.verified);
   async function submit() {
@@ -153,9 +150,6 @@ export function GeneratedVote({
                 "Your vote has not been confirmed yet. Please check it before continuing.",
               )}
         </p>
-      )}
-      {!open && (
-        <p className="hint">{t("Voting is not open for this round yet.")}</p>
       )}
       {round?.allowSelfVotes === false && (
         <p className="hint">

@@ -14,10 +14,6 @@ test("six concurrent stories are generated, saved and judged independently", asy
     release = resolve;
   });
   try {
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     await Promise.all(
       Array.from({ length: 6 }, (_, i) =>
         repo.call("enqueue", {

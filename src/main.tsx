@@ -560,10 +560,7 @@ function Play({
               >
                 {t("Create Another Story")}{" "}
               </button>
-              <button
-                onClick={() => generate(true)}
-                disabled={busy || round.data?.state !== "SUBMISSIONS_OPEN"}
-              >
+              <button onClick={() => generate(true)} disabled={busy}>
                 {t("Create another version")}{" "}
               </button>
               {"speechSynthesis" in window && (
@@ -681,11 +678,7 @@ function Play({
             className="primary full"
             type="submit"
             disabled={
-              busy ||
-              !!operation ||
-              (!booth && !name.trim()) ||
-              !prompt.trim() ||
-              round.data?.state !== "SUBMISSIONS_OPEN"
+              busy || !!operation || (!booth && !name.trim()) || !prompt.trim()
             }
           >
             <svg className="button-icon" aria-hidden="true" viewBox="0 0 24 24">
@@ -809,11 +802,7 @@ function Vote() {
     (a, b) =>
       pageOrder.current.ids.indexOf(a.id) - pageOrder.current.ids.indexOf(b.id),
   );
-  const votingOpen = [
-    "SUBMISSIONS_OPEN",
-    "SUBMISSIONS_CLOSED",
-    "VOTING",
-  ].includes(round.data?.state || "");
+  const votingOpen = !!round.data;
   return (
     <div className="content">
       <div className="page-title">
@@ -873,7 +862,7 @@ function Vote() {
       )}
       <p className="hint" hidden={!!selected}>
         {t(
-          "Voting stays open while stories are being created and until final results are published.",
+          "Story creation and voting are always available. Rankings update as people participate.",
         )}
       </p>
       {pending && (
@@ -1051,11 +1040,6 @@ function Vote() {
                     <button className="primary full" disabled>
                       {t("Vote Recorded")}
                     </button>
-                  )}
-                  {!votingOpen && (
-                    <p className="hint">
-                      {t("Voting is not open for this round yet.")}
-                    </p>
                   )}
                   {voted && (
                     <button className="full" onClick={backToGallery}>
@@ -1520,70 +1504,12 @@ function Admin() {
       </div>
       <div className="dashboard-grid">
         <section className="card">
-          <h2>{t("Round controls")}</h2>
+          <h2>{t("Always open")}</h2>
           <p>
             {t(
-              "Changes are checked by the database. Published results remain fixed.",
-            )}{" "}
-          </p>
-          <div className="actions">
-            {data?.transitions
-              .filter((state) => state !== "VOTING")
-              .map((state) => (
-                <button
-                  key={state}
-                  disabled={busy}
-                  className="primary"
-                  onClick={() =>
-                    action(
-                      "transition",
-                      { state },
-                      state === "RESULTS"
-                        ? t(
-                            "Publish final rankings? Voting will close and results become immutable.",
-                          )
-                        : t("Change the round to {state}?", {
-                            state: t(labels[state]),
-                          }),
-                    )
-                  }
-                >
-                  {
-                    {
-                      SUBMISSIONS_OPEN: t("Start / Open submissions"),
-                      SUBMISSIONS_CLOSED:
-                        data?.round.state === "VOTING"
-                          ? t("Close voting")
-                          : t("Close submissions"),
-                      VOTING: t("Open public voting"),
-                      RESULTS: t("Close voting & Publish results"),
-                      WAITING: t("Wait"),
-                    }[state]
-                  }
-                </button>
-              ))}
-            {data?.round.state === "RESULTS" && (
-              <button
-                disabled={busy}
-                onClick={() => {
-                  const title = window.prompt(
-                    t("Title for the new round"),
-                    t("Prompt Olympics"),
-                  );
-                  if (title)
-                    void action(
-                      "new-round",
-                      { title },
-                      t(
-                        "Create a new round? All historical results are retained.",
-                      ),
-                    );
-                }}
-              >
-                {t("Create a new round")}{" "}
-              </button>
+              "Story creation and voting are always available. Rankings update as people participate.",
             )}
-          </div>
+          </p>
         </section>
         <section className="card">
           <h2>{t("Voting rules")}</h2>
@@ -1613,11 +1539,7 @@ function Admin() {
             {t("Require a one-use event voting code")}{" "}
           </label>
           <button
-            disabled={
-              busy ||
-              data?.round.state === "RESULTS" ||
-              data?.round.state === "VOTING"
-            }
+            disabled={busy}
             onClick={() =>
               action(
                 "settings",

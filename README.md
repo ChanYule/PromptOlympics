@@ -1,12 +1,16 @@
 # Prompt Olympics
 
-Current participant workflow: see [VOTING_FLOW.md](VOTING_FLOW.md). Stories link to the voting page; voting stays open automatically from submissions opening until final results. Migration 005 is required for this version.
+Current participant workflow: see [VOTING_FLOW.md](VOTING_FLOW.md). Story creation and voting stay open at all times. Migration 006 is required for this version.
 
 A React 19 / TypeScript / Vite frontend with Express, Supabase PostgreSQL and server-side Google Gemini. Designed for simple story creation, independent public voting, and a silently refreshing competition leaderboard.
 
 Routes: `/`, `/play`, `/vote`, `/leaderboard`, `/admin`.
 
 The **English / 中文** switch covers all pages and organiser controls. It remembers your preference while preserving drafts, selected ratings and active requests. New stories use the selected language; existing competition entries remain as submitted. See [LOCALIZATION.md](LOCALIZATION.md) for translation coverage and checks.
+
+## Always-open event
+
+Story creation and public voting are always available in the active round. There are no open/close, publish-final-results or manual new-round controls. Rankings keep updating; CSV and database backups can be downloaded at any time. Voting validation, optional event codes, AI quotas and duplicate protection still apply. Existing deployments must apply migration 006 as described in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
 ## Start locally
 
@@ -30,11 +34,11 @@ npm.cmd run build
 node --env-file=.env server.js
 ```
 
-Visit `http://localhost:10000`. Sign in at `/admin` using the configured organiser password and select **Start / Open submissions**. For development with hot reload, keep the Express server running, start `npm.cmd run dev` in another terminal, and open Vite's URL. Vite proxies `/api` to port 10000.
+Visit `http://localhost:10000`. Sign in at `/admin` using the configured organiser password; story creation and voting are already open. For development with hot reload, keep the Express server running, start `npm.cmd run dev` in another terminal, and open Vite's URL. Vite proxies `/api` to port 10000.
 
 ## Production installation
 
-Read [SUPABASE_SETUP.md](SUPABASE_SETUP.md) before deploying an existing event. It includes backups, SQL files, migration validation, write freeze, cutover and rollback. Apply migrations 001 and 002, configure secrets in Render, and deploy with `npm ci --include=dev && npm run build` / `npm start`. The production server refuses local-storage fallback and known/default organiser credentials. Use an always-on paid service for a live competition.
+Read [SUPABASE_SETUP.md](SUPABASE_SETUP.md) before deploying an existing event. It includes backups, SQL files, migration validation, write freeze, cutover and rollback. Apply migrations 001 and 002, import any legacy backup, then apply migrations 003 through 006, configure secrets in Render, and deploy with `npm ci --include=dev && npm run build` / `npm start`. The production server refuses local-storage fallback and known/default organiser credentials. Use an always-on paid service for a live competition.
 
 The old API that accepted browser-generated stories and browser-selected voter IDs is intentionally removed. All official stories are generated and saved by the server. Existing legacy data is migrated through a separate, reviewed process.
 
@@ -67,13 +71,11 @@ Supabase is the authoritative store. A database outage produces a retryable fail
 
 ## Scoring and lifecycle
 
-`WAITING → SUBMISSIONS_OPEN → SUBMISSIONS_CLOSED → VOTING → RESULTS`.
-
-Accepted generation jobs may finish after submissions close. Voting must be explicitly opened. Closing voting returns to `SUBMISSIONS_CLOSED`; it can be reopened with an audited organiser action before publication. Publishing closes voting and stores an immutable snapshot. Pending/failed judging must be resolved (or the affected story removed from public competition) first. **Create a new round** retains all prior data.
+The active round stays in `SUBMISSIONS_OPEN`, with story creation and public voting available together. Organiser actions cannot close, publish or replace it. Historical published snapshots remain unchanged. Download a CSV and backup when announcing standings; the live leaderboard continues updating.
 
 New Gemini rubric v2: humour 50%, creativity 25%, relevance 25%, each criterion from 1 to 5 in one decimal place. Creativity is stored in the existing originality column for schema compatibility; historical scores and rubric versions are retained. The server validates and stores the model, rubric and precise weighted score. No fallback/keyword score is fabricated.
 
-Public score = sum of valid ratings / vote count. Combined score = 50% AI + 50% public average. No public votes means no combined score; the AI value remains provisional. Missing AI means no final score. The default award threshold is five public votes, configurable before voting. All stories remain visible regardless of eligibility.
+Public score = sum of valid ratings / vote count. Combined score = 50% AI + 50% public average. No public votes means no combined score; the AI value remains provisional. Missing AI means no final score. The default award threshold is five public votes, configurable in the organiser dashboard. All stories remain visible regardless of eligibility.
 
 Eligible entries rank first, then precise combined score, public average, AI score, vote count, and byte-stable story ID. Scores are rounded only for display. Stories are ranked individually, including explicitly requested regenerated versions; each version receives its own operation/submission ID and consumes the configured story allowance.
 

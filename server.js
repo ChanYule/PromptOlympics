@@ -144,9 +144,9 @@ export function createApp({
     "/api/ready",
     route(async (req, res) => {
       const health = await call("health");
-      if (repository.kind === "supabase" && health.schemaVersion !== 5)
+      if (repository.kind === "supabase" && health.schemaVersion !== 6)
         throw new DomainError(
-          "Database upgrade required. Ask an organiser to apply migration 005.",
+          "Database upgrade required. Ask an organiser to apply migration 006.",
           503,
         );
       res.json({
@@ -573,16 +573,12 @@ export function createApp({
         req.body.confirm !== true
       )
         throw new DomainError("Confirm this organiser action first.");
-      if (action === "transition")
-        p.state = text(req.body.state, 30, "a round state");
-      else if (action === "new-round") {
-        p.id = randomUUID();
-        p.title = text(
-          req.body.title || "Prompt Olympics",
-          100,
-          "a round title",
+      if (["transition", "new-round"].includes(action))
+        throw new DomainError(
+          "Submissions and voting are always open. Round changes are not allowed.",
+          409,
         );
-      } else if (["delete", "retry-judge", "judge-historical"].includes(action))
+      if (["delete", "retry-judge", "judge-historical"].includes(action))
         p.submissionId = text(req.body.submissionId, 120, "a story");
       else if (action === "settings") {
         if (

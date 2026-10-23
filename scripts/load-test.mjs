@@ -105,7 +105,6 @@ const report = {
 };
 try {
   console.log("Opening submissions");
-  await repo.call("transition", { state: "SUBMISSIONS_OPEN", actor: "test" });
   const creators = await Promise.all(
     Array.from({ length: 100 }, () => client()),
   );
@@ -164,8 +163,6 @@ try {
     p95: generationTimes[Math.floor(generationTimes.length * 0.95)],
     max: generationTimes.at(-1),
   };
-  await repo.call("transition", { state: "SUBMISSIONS_CLOSED", actor: "test" });
-  await repo.call("transition", { state: "VOTING", actor: "test" });
   const voters = [];
   await pool(Array.from({ length: 500 }), 30, async () =>
     voters.push(await client()),
@@ -258,7 +255,10 @@ try {
         confirmed.push(result.data.id);
       } else assert.equal(result.status, 409);
     }),
-    repo.call("transition", { state: "RESULTS", actor: "test" }),
+    assert.rejects(
+      repo.call("transition", { state: "RESULTS", actor: "test" }),
+      /always open/,
+    ),
   ]);
   const late = await request(
     await client(),
@@ -266,10 +266,11 @@ try {
     { submissionId: jobs[0], rating: 5 },
     "late",
   );
-  assert.equal(late.status, 409);
-  report.scenarios.closeDuringVoting = {
-    acceptedBeforeClose: closeAccepted,
-    rejected: 51 - closeAccepted,
+  assert.equal(late.status, 201);
+  confirmed.push(late.data.id);
+  report.scenarios.attemptedCloseDuringVoting = {
+    accepted: closeAccepted + 1,
+    rejected: 50 - closeAccepted,
   };
   const stored = await repo.db.query("select id from po_votes");
   const ids = new Set(stored.rows.map((r) => r.id));

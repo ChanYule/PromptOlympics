@@ -11,7 +11,6 @@ import {
 } from "./competitionStore.js";
 function setup() {
   const store = createCompetition();
-  setCompetitionState(store, "SUBMISSIONS_OPEN");
   const story = createSubmission(store, {
     participantName: "Alice",
     participantSession: "author",
@@ -21,16 +20,13 @@ function setup() {
   });
   return { store, story };
 }
-function open(store) {
-  setCompetitionState(store, "SUBMISSIONS_CLOSED");
-  setCompetitionState(store, "VOTING");
-}
-test("round lifecycle preserves supplied state and rejects invalid transitions", () => {
-  const s = createCompetition();
-  assert.equal(getCurrentRound(s).state, "WAITING");
-  assert.throws(() => setCompetitionState(s, "VOTING"), /not allowed/);
-  setCompetitionState(s, "SUBMISSIONS_OPEN");
-  assert.equal(getCurrentRound(s).state, "SUBMISSIONS_OPEN");
+test("rounds start open and cannot be closed or replaced", () => {
+  const store = createCompetition();
+  assert.equal(getCurrentRound(store).state, "SUBMISSIONS_OPEN");
+  for (const state of ["WAITING", "SUBMISSIONS_CLOSED", "VOTING", "RESULTS"]) {
+    assert.throws(() => setCompetitionState(store, state), /always open/);
+  }
+  assert.throws(() => startNewRound(store, "Next"), /always open/);
 });
 test("new stories remain pending without fabricated judging scores", () => {
   const { store, story } = setup();
@@ -40,7 +36,6 @@ test("new stories remain pending without fabricated judging scores", () => {
 test("precise equal weighting, provisional eligibility, duplicate retries and self voting", () => {
   const { store, story } = setup();
   story.aiScore = { overall: 4.375 };
-  open(store);
   for (let i = 0; i < 5; i++)
     createVote(store, {
       submissionId: story.id,
@@ -85,8 +80,7 @@ test("invalid ratings never record a vote", () => {
     true,
   ]) {
     const { store, story } = setup();
-    open(store);
-    assert.throws(() =>
+      assert.throws(() =>
       createVote(store, {
         submissionId: story.id,
         voterSession: "reader",
@@ -97,22 +91,13 @@ test("invalid ratings never record a vote", () => {
     assert.equal(getCurrentRound(store).votes.length, 0);
   }
 });
-test("final snapshots and round history remain immutable", () => {
+test("historical snapshots remain fixed", () => {
   const { store, story } = setup();
   story.aiScore = { overall: 4 };
-  open(store);
-  createVote(store, {
-    submissionId: story.id,
-    voterSession: "reader",
-    rating: 5,
-    idempotencyKey: "v",
-  });
-  setCompetitionState(store, "RESULTS");
-  const before = buildLeaderboard(getCurrentRound(store));
+  const round = getCurrentRound(store);
+  round.snapshot = buildLeaderboard(round);
+  round.state = "RESULTS";
+  const before = buildLeaderboard(round);
   story.aiScore.overall = 1;
-  assert.deepEqual(buildLeaderboard(getCurrentRound(store)), before);
-  assert.throws(() => setCompetitionState(store, "VOTING"));
-  startNewRound(store, "Next");
-  assert.equal(store.rounds.length, 2);
-  assert.equal(store.rounds[0].votes.length, 1);
+  assert.deepEqual(buildLeaderboard(round), before);
 });

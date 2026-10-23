@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   createCompetition,
+  createRound,
   getCurrentRound,
   buildLeaderboard,
   createVote,
@@ -24,6 +25,24 @@ export function createLocalRepository(filename) {
   store.schemaVersion = 2;
   store.adminSessions ??= [];
   store.endedSessions ??= {};
+  // Preserve published snapshots and continue in a new open round.
+  const current = getCurrentRound(store);
+  if (current.state === "RESULTS") {
+    const next = createRound(
+      Math.max(...store.rounds.map((r) => r.roundNumber)) + 1,
+      current.title,
+    );
+    for (const key of [
+      "minVotes",
+      "strictCodes",
+      "boothMode",
+      "allowSelfVotes",
+    ])
+      next[key] = current[key];
+    store.rounds.push(next);
+    store.currentRoundIndex = store.rounds.length - 1;
+  } else current.state = "SUBMISSIONS_OPEN";
+
   function commit() {
     fs.mkdirSync(path.dirname(filename), { recursive: true });
     fs.writeFileSync(filename + ".tmp", JSON.stringify(store));
@@ -169,7 +188,7 @@ export function createLocalRepository(filename) {
       return {};
     }
     if (action === "health")
-      return { ok: true, storageConnected: true, schemaVersion: 5 };
+      return { ok: true, storageConnected: true, schemaVersion: 6 };
     if (action === "limit") {
       store.limits = store.limits.filter((l) => l.expiresAt > now);
       let l = store.limits.find((l) => l.key === p.key);
@@ -463,8 +482,6 @@ export function createLocalRepository(filename) {
           availableAt: now,
         });
       } else if (action === "settings") {
-        if (r.state === "VOTING")
-          throw new DomainError("Close voting before changing rules.", 409);
         r.minVotes = p.minVotes;
         r.strictCodes = p.strictCodes;
         if (typeof p.boothMode === "boolean") r.boothMode = p.boothMode;

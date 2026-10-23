@@ -30,6 +30,7 @@ export async function postgresLoadDatabase() {
       "003_shared_device_voting.sql",
       "004_booth_sessions.sql",
       "005_always_open_voting.sql",
+      "006_always_open_event.sql",
     ])
       await pool.query(
         fs.readFileSync(

@@ -46,7 +46,7 @@ function legacy() {
   };
 }
 test("legacy migration preserves IDs, votes, scores and counts; exact rerun is safe", async () => {
-  const repo = await database();
+  const repo = await database({ alwaysOpen: false });
   try {
     await repo.db.exec(
       fs.readFileSync(
@@ -107,7 +107,7 @@ test("ambiguous OPEN, duplicates, orphaned votes and invalid scales stop migrati
   assert.equal(prepareMigration(raw).records.judgements[0].overall, 4);
 });
 test("unscored historical judging requires an explicit audited operation and preserves completed scores", async () => {
-  const repo = await database();
+  const repo = await database({ alwaysOpen: false });
   try {
     await repo.db.exec(
       fs.readFileSync(
@@ -122,10 +122,19 @@ test("unscored historical judging requires an explicit audited operation and pre
     delete raw.rounds[0].submissions[0].aiScore;
     const data = prepareMigration(raw);
     await repo.db.query("select po_import($1::jsonb)", [JSON.stringify(data)]);
+    await repo.db.exec(
+      fs.readFileSync(
+        new URL(
+          "../supabase/migrations/006_always_open_event.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
     assert.equal((await repo.call("leaderboard")).entries[0].aiScore, null);
     await assert.rejects(
       repo.call("transition", { state: "RESULTS", actor: "admin" }),
-      /Resolve/,
+      /always open/,
     );
     await repo.call("judge-historical", {
       submissionId: "legacy-story",
@@ -166,6 +175,58 @@ test("unscored historical judging requires an explicit audited operation and pre
       ),
       1,
     );
+  } finally {
+    await repo.db.close();
+  }
+});
+
+test("always-open upgrade reopens unfinished rounds and preserves published snapshots on rerun", async () => {
+  const repo = await database({ alwaysOpen: false });
+  const upgrade = fs.readFileSync(
+    new URL(
+      "../supabase/migrations/006_always_open_event.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  try {
+    for (const state of [
+      "WAITING",
+      "SUBMISSIONS_CLOSED",
+      "VOTING",
+      "SUBMISSIONS_OPEN",
+    ]) {
+      await repo.db.query(
+        "update po_rounds set state=$1 where id='initial-round'",
+        [state],
+      );
+      await repo.db.exec(upgrade);
+      assert.equal((await repo.call("competition")).id, "initial-round");
+      assert.equal((await repo.call("competition")).state, "SUBMISSIONS_OPEN");
+    }
+    await repo.db.exec(
+      "insert into po_participants(id,name,session_id,round_id) values('p','Alice','author','initial-round'); insert into po_submissions(id,round_id,participant_id,title,prompt,story) values('s','initial-round','p','Soup','Robot','Robot soup.'); insert into po_votes(id,round_id,submission_id,voter_id,rating,operation_id) values('v','initial-round','s','reader',5,'original'); update po_rounds set state='RESULTS',snapshot=po_leaderboard(id) where id='initial-round';",
+    );
+    const before = await repo.call("leaderboard");
+    await repo.db.exec(upgrade);
+    const current = await repo.call("competition");
+    assert.notEqual(current.id, "initial-round");
+    assert.equal(current.state, "SUBMISSIONS_OPEN");
+    assert.deepEqual(
+      await repo.call("leaderboard", { roundId: "initial-round" }),
+      before,
+    );
+    await repo.db.exec(upgrade);
+    assert.equal((await repo.call("competition")).id, current.id);
+    assert.equal(
+      (await repo.db.query("select count(*) n from po_rounds")).rows[0].n,
+      2,
+    );
+    assert.equal(
+      (await repo.db.query("select count(*) n from po_votes")).rows[0].n,
+      1,
+    );
+    assert.equal((await repo.call("health")).schemaVersion, 6);
   } finally {
     await repo.db.close();
   }

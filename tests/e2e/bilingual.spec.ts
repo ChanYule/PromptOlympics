@@ -149,9 +149,7 @@ test("English/Chinese switching covers every page, preserves drafts and ratings,
   await expect(
     page.getByRole("heading", { name: "主办方管理面板" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "开始比赛 / 开放投稿" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "随时开放" })).toBeVisible();
   await page.getByRole("button", { name: "检查数据库连接状态" }).click();
   await expect(page.getByText("数据库已连接 · 故事 AI 已配置")).toBeVisible();
   const downloadPromise = page.waitForEvent("download");

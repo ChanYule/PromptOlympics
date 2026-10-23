@@ -43,33 +43,13 @@ async function story(repo, sessionId = "author") {
   });
   return job.id;
 }
-test("PostgreSQL voting, retries, privacy, final snapshots and history", async () => {
+test("PostgreSQL always-open generation, voting, retries and privacy", async () => {
   const repo = await database();
   try {
-    await assert.rejects(
-      repo.call("enqueue", {
-        sessionId: "a",
-        input: {},
-        id: "x",
-        idempotencyKey: "x",
-        maxQueue: 10,
-        maxPerParticipant: 5,
-        dailyBudget: 1000,
-      }),
-      /closed/,
-    );
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
+    assert.equal((await repo.call("competition")).state, "SUBMISSIONS_OPEN");
     const id = await story(repo);
     assert.equal((await repo.call("leaderboard")).entries[0].aiScore, 4.375);
     assert.equal((await repo.call("leaderboard")).entries[0].finalScore, null);
-    await repo.call("transition", {
-      state: "SUBMISSIONS_CLOSED",
-      actor: "admin",
-    });
-    await repo.call("transition", { state: "VOTING", actor: "admin" });
     const votes = Array.from({ length: 50 }, (_, i) => ({
       sessionId: i === 0 ? "author" : "reader-" + i,
       submissionId: id,
@@ -96,26 +76,33 @@ test("PostgreSQL voting, retries, privacy, final snapshots and history", async (
     const browse = await repo.call("stories", { sessionId: "author" });
     assert.equal(browse.items[0].voted, true);
     assert.equal(JSON.stringify(browse).includes("reader-1"), false);
-    await repo.call("transition", { state: "RESULTS", actor: "admin" });
+    for (const state of [
+      "WAITING",
+      "SUBMISSIONS_CLOSED",
+      "VOTING",
+      "RESULTS",
+    ]) {
+      await assert.rejects(
+        repo.call("transition", { state, actor: "admin" }),
+        /always open/,
+      );
+    }
     await assert.rejects(
-      repo.call("vote", {
-        ...votes[0],
-        sessionId: "late",
-        idempotencyKey: "late",
-      }),
-      /closed/,
+      repo.call("new-round", { id: "next", title: "Next", actor: "admin" }),
+      /always open/,
     );
-    assert.deepEqual((await repo.call("leaderboard")).entries, leader.entries);
-    await assert.rejects(
-      repo.call("delete", { submissionId: id, actor: "admin" }),
-      /immutable/,
-    );
-    await repo.call("new-round", { id: "next", title: "Next", actor: "admin" });
-    assert.equal((await repo.call("competition")).state, "WAITING");
+    await repo.call("vote", {
+      ...votes[0],
+      id: randomUUID(),
+      sessionId: "late",
+      idempotencyKey: "late",
+    });
+    assert.equal((await repo.call("leaderboard")).entries[0].voteCount, 51);
+    assert.equal((await repo.call("leaderboard")).final, false);
+    await story(repo, "another-author");
     assert.equal(
-      (await repo.call("leaderboard", { roundId: "initial-round" })).entries[0]
-        .voteCount,
-      50,
+      (await repo.call("stories", { sessionId: "reader" })).items.length,
+      2,
     );
   } finally {
     await repo.db.close();
@@ -124,10 +111,6 @@ test("PostgreSQL voting, retries, privacy, final snapshots and history", async (
 test("queue lease recovery and one-use voting codes", async () => {
   const repo = await database();
   try {
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     const id = await story(repo);
     await repo.call("settings", {
       minVotes: 5,
@@ -140,11 +123,6 @@ test("queue lease recovery and one-use voting codes", async () => {
       repo.call("redeem", { codeHash: "code", sessionId: "other" }),
       /already used/,
     );
-    await repo.call("transition", {
-      state: "SUBMISSIONS_CLOSED",
-      actor: "admin",
-    });
-    await repo.call("transition", { state: "VOTING", actor: "admin" });
     await assert.rejects(
       repo.call("vote", {
         sessionId: "other",
@@ -170,10 +148,6 @@ test("Gemini quota failure recovers through durable queue without losing job or 
   const repo = await database();
   let worker;
   try {
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     const id = randomUUID();
     await repo.call("enqueue", {
       sessionId: "author",

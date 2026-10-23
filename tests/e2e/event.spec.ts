@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-test("complete live event, response-loss recovery, polling, final results and responsive layouts", async ({
+test("always-open event, response-loss recovery, polling and responsive layouts", async ({
   browser,
 }) => {
   const adminContext = await browser.newContext(),
@@ -19,7 +19,6 @@ test("complete live event, response-loss recovery, polling, final results and re
     admin.getByRole("heading", { name: "Organiser Dashboard" }),
   ).toBeVisible();
   admin.on("dialog", (dialog) => dialog.accept());
-  await admin.getByRole("button", { name: "Start / Open submissions" }).click();
   await expect(admin.locator(".round-status")).toContainText(
     "Story creation is open",
   );
@@ -69,15 +68,11 @@ test("complete live event, response-loss recovery, polling, final results and re
   await author.getByRole("button", { name: "Create another version" }).click();
   await expect(author.getByText("Saved to the competition")).toBeVisible();
   await expect(author.getByText("AI score:")).toBeVisible();
-  await admin
-    .getByRole("button", { name: "Close submissions", exact: true })
-    .click();
   await expect(
-    admin.getByRole("button", { name: "Open public voting" }),
+    admin.getByRole("button", {
+      name: /Open submissions|Close submissions|Open public voting|Close voting|Create a new round/,
+    }),
   ).toHaveCount(0);
-  await expect(admin.locator(".round-status")).toContainText(
-    "Story creation is closed",
-  );
   await author.goto("/vote");
   await author
     .getByRole("button", { name: "Read and Vote", exact: false })
@@ -225,12 +220,19 @@ test("complete live event, response-loss recovery, polling, final results and re
       ),
     )
     .toBe(true);
-  await admin
-    .getByRole("button", { name: "Close voting & Publish results" })
+  await admin.request.post("/__test/restart");
+  await admin.reload();
+  await expect(
+    admin.getByRole("heading", { name: "Always open" }),
+  ).toBeVisible();
+  await author.goto("/play");
+  await author
+    .getByRole("button", { name: "Create Another Story", exact: true })
     .click();
-  await expect(admin.locator(".round-status")).toContainText(
-    "Final results published",
-  );
+  await author.getByLabel("What should happen").fill("A panda drives a bus.");
+  await expect(
+    author.getByRole("button", { name: "Create My Funny Story" }),
+  ).toBeEnabled();
   await voter.getByRole("button", { name: "Refresh Now" }).click();
   await expect(
     voter.getByRole("heading", { name: "Prompt Olympics Leaderboard" }),

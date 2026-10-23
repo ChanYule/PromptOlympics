@@ -14,14 +14,14 @@
       "completed": 100,
       "maximumObservedQueue": 10,
       "endToEndMockedMs": {
-        "p50": 612,
-        "p95": 1213,
-        "max": 5223
+        "p50": 510,
+        "p95": 1136,
+        "max": 5079
       }
     },
     "voting500": {
       "acknowledged": 500,
-      "durationMs": 1332.3280999999988
+      "durationMs": 2423.418300000001
     },
     "duplicate100": {
       "additionalRecords": 0
@@ -36,30 +36,30 @@
     "restart": {
       "confirmedVotesRetained": 501
     },
-    "closeDuringVoting": {
-      "acceptedBeforeClose": 0,
-      "rejected": 51
+    "attemptedCloseDuringVoting": {
+      "accepted": 51,
+      "rejected": 0
     }
   },
-  "successfulVoteCount": 501,
+  "successfulVoteCount": 552,
   "lostConfirmedVotes": 0,
   "duplicateVoteRecords": 0,
   "voteLatency": {
     "requests": 653,
-    "averageMs": 134.5173493108727,
-    "p95Ms": 183.1353999999992
+    "averageMs": 238.38510903522211,
+    "p95Ms": 538.8636000000006
   },
   "leaderboardLatency": {
     "requests": 201,
-    "averageMs": 47.448982089552146,
-    "p95Ms": 89.53169999999955
+    "averageMs": 24.903921393034857,
+    "p95Ms": 39.887800000000425
   },
-  "elapsedSeconds": 9.134422,
-  "requestsPerSecond": 104.44010578885012,
-  "expectedRejectionRate": 0.05450733752620545,
+  "elapsedSeconds": 9.969571400000001,
+  "requestsPerSecond": 95.69117484829889,
+  "expectedRejectionRate": 0.0010482180293501049,
   "unexpectedErrors": 0,
-  "peakRssMB": 474.28125,
-  "cpuMs": 2266,
+  "peakRssMB": 484.421875,
+  "cpuMs": 1953,
   "queueRemaining": 0,
   "passed": true
 }

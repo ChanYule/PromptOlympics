@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { DomainError } from "../competitionStore.js";
-export async function database() {
+export async function database({ alwaysOpen = true } = {}) {
   const db = new PGlite();
   await db.exec(
     "create role anon; create role authenticated; create role service_role;",
@@ -36,6 +36,16 @@ export async function database() {
       "utf8",
     ),
   );
+  if (alwaysOpen)
+    await db.exec(
+      fs.readFileSync(
+        new URL(
+          "../supabase/migrations/006_always_open_event.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
   return {
     db,
     kind: "postgres-test",

@@ -6,13 +6,9 @@ export const COMPETITION_STATES = [
   "VOTING",
   "RESULTS",
 ];
-export const TRANSITIONS = {
-  WAITING: ["SUBMISSIONS_OPEN"],
-  SUBMISSIONS_OPEN: ["SUBMISSIONS_CLOSED"],
-  SUBMISSIONS_CLOSED: ["VOTING", "RESULTS"],
-  VOTING: ["SUBMISSIONS_CLOSED", "RESULTS"],
-  RESULTS: [],
-};
+export const TRANSITIONS = Object.fromEntries(
+  COMPETITION_STATES.map((state) => [state, []]),
+);
 export class DomainError extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -24,7 +20,7 @@ export function createRound(number = 1, title = "Prompt Olympics") {
     id: randomUUID(),
     title,
     roundNumber: number,
-    state: "WAITING",
+    state: "SUBMISSIONS_OPEN",
     minVotes: 5,
     submissions: [],
     votes: [],
@@ -47,30 +43,11 @@ export function createCompetition(initial = {}) {
 export function getCurrentRound(store) {
   return store.rounds[store.currentRoundIndex];
 }
-export function setCompetitionState(store, state) {
-  const round = getCurrentRound(store);
-  if (!TRANSITIONS[round.state]?.includes(state))
-    throw new DomainError("This round change is not allowed.", 409);
-  if (state === "RESULTS") {
-    if (
-      store.jobs.some(
-        (j) =>
-          j.roundId === round.id && !["ready", "failed"].includes(j.status),
-      )
-    )
-      throw new DomainError(
-        "Wait for generation and judging to finish before publishing.",
-        409,
-      );
-    if (round.submissions.some((s) => !s.deleted && !s.aiScore))
-      throw new DomainError(
-        "Resolve failed AI judging before publishing.",
-        409,
-      );
-    round.snapshot = buildLeaderboard(round);
-  }
-  round.state = state;
-  return round;
+export function setCompetitionState() {
+  throw new DomainError(
+    "Submissions and voting are always open. Round changes are not allowed.",
+    409,
+  );
 }
 export function createSubmission(store, input) {
   const round =
@@ -199,14 +176,9 @@ export function buildLeaderboard(round) {
             : 0),
     );
 }
-export function startNewRound(store, title) {
-  if (getCurrentRound(store).state !== "RESULTS")
-    throw new DomainError(
-      "Publish the current results before starting a new round.",
-      409,
-    );
-  const next = createRound(store.rounds.length + 1, title || "Prompt Olympics");
-  store.rounds.push(next);
-  store.currentRoundIndex++;
-  return next;
+export function startNewRound() {
+  throw new DomainError(
+    "Submissions and voting are always open. Round changes are not allowed.",
+    409,
+  );
 }

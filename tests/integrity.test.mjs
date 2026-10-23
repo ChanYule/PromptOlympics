@@ -5,10 +5,6 @@ import { database } from "./database.mjs";
 test("expired leases preserve generated output; stale workers and public roles cannot write", async () => {
   const repo = await database();
   try {
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     const id = randomUUID();
     await repo.call("enqueue", {
       sessionId: "author",
@@ -71,21 +67,12 @@ test("expired leases preserve generated output; stale workers and public roles c
 test("same-identity vote races enforce uniqueness and exact operation races reconcile", async () => {
   const repo = await database();
   try {
-    await repo.call("transition", {
-      state: "SUBMISSIONS_OPEN",
-      actor: "admin",
-    });
     await repo.db.query(
       "insert into po_participants(id,name,session_id,round_id) values('p','Alice','author','initial-round')",
     );
     await repo.db.query(
       "insert into po_submissions(id,round_id,participant_id,title,prompt,story) values('s','initial-round','p','Soup','Robot','A robot made soup.')",
     );
-    await repo.call("transition", {
-      state: "SUBMISSIONS_CLOSED",
-      actor: "admin",
-    });
-    await repo.call("transition", { state: "VOTING", actor: "admin" });
     const input = {
       sessionId: "racing-reader",
       submissionId: "s",

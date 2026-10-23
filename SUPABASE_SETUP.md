@@ -2,6 +2,14 @@
 
 Use a separate Supabase test project first. These operations have not been applied to any hosted database by this upgrade.
 
+## Always-open event upgrade (006)
+
+For an existing normalized deployment, take a private **Download database backup**, then apply `supabase/migrations/006_always_open_event.sql` after migrations 003, 004 and 005. Deploy this app version only after the SQL succeeds. For a legacy import, finish the import before applying 006.
+
+Migration 006 opens the current unfinished round without deleting entries or votes. If the current round already has published results, it preserves that round and its snapshot and creates a fresh open round, retaining voting settings. Historical voting codes stay with their original round; generate new codes if the fresh round requires them. Rerunning 006 does not create another round. Closing, publishing and manually replacing the active round are disabled; the current leaderboard stays live and CSV/backup exports remain available.
+
+Verify `/api/ready` returns HTTP 200, then rehearse generation, voting and a restart. The app requires schema version 6 and refuses readiness against the old function. No hosted database or deployment is changed merely by editing these files.
+
 ## Prepare credentials locally
 
 Use Node 22.18 or newer. In PowerShell from the repository, set `SUPABASE_URL`. Read your **server secret key** from Supabase Settings → API Keys into the terminal, never chat or source files:
@@ -34,7 +42,7 @@ Modern `sb_secret_...` keys and legacy `service_role` JWTs are supported. Publis
    node scripts/import-supabase.js backups/legacy-before-maintenance.json --dry-run
    ```
 
-   If a round is `OPEN`, rerun with an explicit phase, for example `--legacy-open-state=VOTING`. `OPEN` formerly allowed simultaneous submissions and voting; the new lifecycle does not. Decide with the organiser when both features were in use.
+   If a round is `OPEN`, rerun with an explicit phase, for example `--legacy-open-state=VOTING`. Choose the phase that matches the source backup. Migration 006 will open the imported current unfinished round after the import.
 
 5. The script detects duplicate/missing IDs, orphaned or malformed votes, conflicting identities, unknown score scales, invalid timestamps and missing final snapshots. Resolve inconsistencies in a **copy** of the backup and retain the untouched original. It does not discard votes to make an import pass. Historical `RESULTS` requires a verified snapshot; importing an unverified final ranking is intentionally blocked.
 6. Review the counts and warnings. A missing historical AI score remains pending and cannot be treated as an official completed judging result. No historical story is silently judged.
@@ -119,4 +127,4 @@ Run migrations 001, 002, 003 and 004 in numeric order for a fresh project. Exist
 
 ## Always-open voting update (migration 005)
 
-The current release removes rating controls from the generated-story screen and sends participants to /vote. Apply `supabase/migrations/005_always_open_voting.sql` after 004, then deploy matching server/browser code. Readiness requires schema version 5. All story, score, vote, session-boundary and final-snapshot records are retained. Voting is automatic during SUBMISSIONS_OPEN and SUBMISSIONS_CLOSED; no booth-mode setting or separate voting-opening action is needed. Publish final results to end voting. See VOTING_FLOW.md for current operator instructions.
+Migration 005 introduced voting during submissions and judging. It is a prerequisite for migration 006, which supersedes its phase controls. Apply 006 after completing any legacy import; readiness now requires schema version 6. See the always-open upgrade instructions above and VOTING_FLOW.md for the current workflow.

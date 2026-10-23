@@ -76,22 +76,21 @@ test("HTTP sessions, CSRF, official generation, polling, voting and admin logout
       401,
     );
     await admin.login();
-    assert.equal(
-      (
-        await admin.request("/api/admin/transition", {
-          state: "SUBMISSIONS_OPEN",
-        })
-      ).status,
-      400,
-    );
-    assert.equal(
-      (
-        await admin.request("/api/admin/transition", {
-          state: "SUBMISSIONS_OPEN",
-          confirm: true,
-        })
-      ).status,
-      200,
+    for (const state of [
+      "SUBMISSIONS_OPEN",
+      "SUBMISSIONS_CLOSED",
+      "VOTING",
+      "RESULTS",
+    ]) {
+      assert.equal(
+        (await admin.request("/api/admin/transition", { state, confirm: true }))
+          .status,
+        409,
+      );
+    }
+    assert.deepEqual(
+      (await admin.request("/api/admin/competition")).data.transitions,
+      [],
     );
     assert.equal(
       (
@@ -345,19 +344,17 @@ test("HTTP sessions, CSRF, official generation, polling, voting and admin logout
     });
     assert.equal(
       (
-        await reader.request(
-          "/api/votes",
-          { submissionId: job.id, rating: 5 },
-          "late",
-        )
+        await (
+          await client(base)
+        ).request("/api/votes", { submissionId: job.id, rating: 5 }, "late")
       ).status,
-      409,
+      201,
     );
     assert.equal((await admin.request("/api/admin/export")).status, 200);
     await admin.request("/api/admin/logout", {});
     assert.equal((await admin.request("/api/admin/competition")).status, 401);
     const restart = createCompetitionRepository({ env: e });
-    assert.equal((await restart.call("leaderboard")).entries[0].voteCount, 3);
+    assert.equal((await restart.call("leaderboard")).entries[0].voteCount, 4);
   } finally {
     service.stop();
     await new Promise((r) => server.close(r));
@@ -411,7 +408,7 @@ test("readiness rejects a production database missing the booth migration", asyn
     assert.equal((await fetch(base + "/api/health")).status, 200);
     const ready = await fetch(base + "/api/ready");
     assert.equal(ready.status, 503);
-    assert.match((await ready.json()).error, /migration 005/);
+    assert.match((await ready.json()).error, /migration 006/);
   } finally {
     service.stop();
     await new Promise((resolve) => server.close(resolve));
