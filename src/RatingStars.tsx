@@ -27,7 +27,7 @@ export function RatingStars({
         {ratingLabels.map((label, i) => (
           <label
             key={label}
-            className={(hover || value) >= i + 1 ? "filled" : ""}
+            className={`${(hover || value) >= i + 1 ? "filled" : ""} ${value === i + 1 ? "chosen" : ""}`}
             onMouseEnter={() => !disabled && setHover(i + 1)}
           >
             <input
@@ -37,9 +37,15 @@ export function RatingStars({
               checked={value === i + 1}
               onChange={() => onChange(i + 1)}
             />
+            <span className="rating-number" aria-hidden="true">
+              {i + 1}
+            </span>
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z" />
             </svg>
+            <span className="rating-word" aria-hidden="true">
+              {t(label)}
+            </span>
             <span className="sr-only">
               {t(i === 0 ? "{count} star: {label}" : "{count} stars: {label}", {
                 count: i + 1,

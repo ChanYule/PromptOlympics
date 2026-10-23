@@ -1,3 +1,4 @@
+import { StoryArt } from "./StoryArt";
 import { useEffect, useRef, useState } from "react";
 import { finishParticipant, readSaved, save } from "./api";
 import { t, message } from "./i18n";
@@ -66,6 +67,9 @@ export function Booth({
     <div key={version}>
       {!started ? (
         <section className="content narrow card booth-welcome">
+          <div className="booth-illustration">
+            <StoryArt />
+          </div>
           <p className="eyebrow">{t("Welcome to Prompt Olympics")}</p>
           <h1>{t("One idea. Your own funny story.")}</h1>
           <p>
@@ -73,6 +77,16 @@ export function Booth({
               "Create a story, read it, and give it a star rating. No registration needed.",
             )}
           </p>
+          <ol className="booth-journey" aria-label={t("Story progress")}>
+            {[t("Your Idea"), t("Your Story"), t("Your rating")].map(
+              (label, index) => (
+                <li key={label}>
+                  <span aria-hidden="true">{index + 1}</span>
+                  {label}
+                </li>
+              ),
+            )}
+          </ol>
           <button
             className="primary full"
             onClick={() => {

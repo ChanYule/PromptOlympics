@@ -1,4 +1,13 @@
 export const zh: Record<string, string> = {
+  "Your story studio": "你的故事工作室",
+  "Pick a starting point. Make it your own.": "选一个灵感，再加上你的创意。",
+  "Your draft is kept on this device.": "草稿会保留在这台设备上。",
+  "Ready to read": "等你来阅读",
+  "Event at a glance": "活动概况",
+  "Stories shared": "已分享的故事",
+  "Public ratings": "公众评分次数",
+  "AI and public scoring": "AI 与公众评分比例",
+  "Your rating": "你的评分",
   "Always open": "随时开放",
   "Story creation and voting are always available. Rankings update as people participate.":
     "随时可以创作故事和投票。排名会随着大家的参与持续更新。",

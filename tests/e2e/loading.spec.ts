@@ -48,9 +48,7 @@ test("loading view shows live stages, survives reload, switches language and rev
       .getByRole("status")
       .filter({ hasText: "Your request is in the queue" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Creating your story" }),
-  ).toBeDisabled();
+  await expect(page.getByLabel("What should happen")).toBeHidden();
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Your story is on its way" }),

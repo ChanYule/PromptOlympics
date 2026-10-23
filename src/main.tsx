@@ -1,3 +1,4 @@
+import { StoryArt } from "./StoryArt";
 import { GeneratedVote } from "./GeneratedVote";
 import { RatingStars } from "./RatingStars";
 import { LeaderboardStories } from "./LeaderboardStories";
@@ -24,6 +25,7 @@ import {
   setLanguage,
 } from "./i18n";
 import "./styles.css";
+import "./gameplay.css";
 const labels: Record<RoundState, string> = {
   WAITING: "Waiting to begin",
   SUBMISSIONS_OPEN: "Story creation is open",
@@ -223,7 +225,7 @@ function RoundStatus({ round }: { round: Round | null }) {
 function Home() {
   const { data, error, refresh } = useFeed<Round>("/api/competition");
   return (
-    <div className="content">
+    <div className="content home-page">
       <section className="hero">
         <div>
           <p className="eyebrow">{t("A competition for every imagination")}</p>
@@ -249,9 +251,7 @@ function Home() {
         </div>
         <div className="hero-note">
           <span className="edition">{t("PROMPT OLYMPICS")}</span>
-          <span className="hero-symbol" aria-hidden>
-            “
-          </span>
+          <StoryArt />
           <h2>
             {t("Small ideas.")} <br />
             {t("Big laughs.")}{" "}
@@ -307,6 +307,17 @@ function Play({
   onFinished,
 }: { booth?: boolean; onFinished?: () => void } = {}) {
   const loadingHeading = useRef<HTMLHeadingElement>(null);
+  const resultHeading = useRef<HTMLHeadingElement>(null);
+  const [ideasOpen, setIdeasOpen] = useState(
+    () => !window.matchMedia("(max-width: 760px)").matches,
+  );
+  useEffect(() => {
+    const compact = window.matchMedia("(max-width: 760px)");
+    const change = () => setIdeasOpen(!compact.matches);
+    compact.addEventListener("change", change);
+    return () => compact.removeEventListener("change", change);
+  }, []);
+
   const round = useFeed<Round>("/api/competition", 30000);
   const [name, setName] = useState(() =>
       readSaved("name", booth ? t("Happy Panda") : ""),
@@ -425,6 +436,9 @@ function Play({
     }
   }
   const story = job?.submission;
+  useEffect(() => {
+    if (story) resultHeading.current?.focus();
+  }, [story?.id]);
   const loading = busy && !story;
   useEffect(() => {
     if (loading) loadingHeading.current?.focus();
@@ -445,7 +459,9 @@ function Play({
     [],
   );
   return (
-    <div className="content narrow creation-page">
+    <div
+      className={`content creation-page ${story || loading ? "reading-mode" : ""}`}
+    >
       <div className="page-title">
         <p className="eyebrow">{t("Your imagination starts here")}</p>
         <h1>{t("Create Your Funny Story")}</h1>
@@ -525,7 +541,16 @@ function Play({
             <span>{story.participantName}</span>
             <span className="badge">{t("Saved to the competition")}</span>
           </div>
-          <h2>{story.title}</h2>
+          <div className="story-heading">
+            <h2 ref={resultHeading} tabIndex={-1}>
+              {story.title}
+            </h2>
+            {"speechSynthesis" in window && (
+              <button className="listen-button" onClick={speak}>
+                {t("Read aloud")}
+              </button>
+            )}
+          </div>
           <p
             className="story-text"
             lang={/\p{Script=Han}/u.test(story.resultText) ? "zh-Hans" : "en"}
@@ -563,129 +588,159 @@ function Play({
               <button onClick={() => generate(true)} disabled={busy}>
                 {t("Create another version")}{" "}
               </button>
-              {"speechSynthesis" in window && (
-                <button onClick={speak}>{t("Read aloud")}</button>
-              )}
             </div>
           )}
         </article>
       ) : (
         <form
           className="card creation-form"
+          hidden={loading}
           aria-busy={busy}
           onSubmit={(e) => {
             e.preventDefault();
             void generate();
           }}
         >
-          <p className="hint">
-            {t(
-              getLanguage() === "zh"
-                ? "Story language: Chinese"
-                : "Story language: English",
-            )}
-          </p>
-          <label htmlFor="nickname">{t("What should we call you?")}</label>
-          <p className="hint">{t("Use your first name or a fun nickname.")} </p>
-          <div className="input-row">
-            <input
-              id="nickname"
-              autoComplete="nickname"
-              value={name}
-              maxLength={40}
-              required={!booth}
-              disabled={busy}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                setName(
-                  t("Captain {name}", {
-                    name: t(
-                      ["Penguin", "Potato", "Wizard"][
-                        Math.floor(Math.random() * 3)
-                      ],
-                    ),
-                  }),
-                )
-              }
-            >
-              {t("Suggest a name")}{" "}
-            </button>
+          <div className="workspace-heading">
+            <span className="workspace-kicker">{t("Your story studio")}</span>
+            <p className="hint">
+              {t(
+                getLanguage() === "zh"
+                  ? "Story language: Chinese"
+                  : "Story language: English",
+              )}
+            </p>
           </div>
-          <label htmlFor="idea">{t("What should happen in your story?")}</label>
-          <p className="hint" id="idea-help">
-            {t(
-              "Tell us your funniest idea. AI will turn it into a short story.",
-            )}
-          </p>
-          <textarea
-            aria-describedby="idea-help idea-count"
-            id="idea"
-            value={prompt}
-            maxLength={700}
-            required
-            rows={6}
-            disabled={busy}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={t(
-              "A robot arrives at a family dinner and takes everything literally…",
-            )}
-          />
-          <p className="hint" id="idea-count">
-            {t(
-              "{count} / 700 characters · Who is there? Where are they? What goes wrong?",
-              { count: prompt.length },
-            )}
-          </p>
-          <section className="inspiration" aria-label={t("Need an idea?")}>
-            <h3>{t("Need an idea?")}</h3>
-            <div className="suggestions">
-              {examples.map((x) => (
+          <div className="creation-workspace">
+            <div className="idea-editor">
+              <label htmlFor="nickname">{t("What should we call you?")}</label>
+              <p className="hint">
+                {t("Use your first name or a fun nickname.")}{" "}
+              </p>
+              <div className="input-row">
+                <input
+                  id="nickname"
+                  autoComplete="nickname"
+                  value={name}
+                  maxLength={40}
+                  required={!booth}
+                  disabled={busy}
+                  onChange={(e) => setName(e.target.value)}
+                />
                 <button
                   type="button"
-                  key={x}
                   disabled={busy}
-                  onClick={() => {
-                    if (
-                      !prompt.trim() ||
-                      window.confirm(
-                        t("Replace your current idea with this suggestion?"),
-                      )
+                  onClick={() =>
+                    setName(
+                      t("Captain {name}", {
+                        name: t(
+                          ["Penguin", "Potato", "Wizard"][
+                            Math.floor(Math.random() * 3)
+                          ],
+                        ),
+                      }),
                     )
-                      setPrompt(t(x));
-                  }}
+                  }
                 >
-                  {t(x)}
+                  {t("Suggest a name")}{" "}
                 </button>
-              ))}
+              </div>
+              <label htmlFor="idea">
+                {t("What should happen in your story?")}
+              </label>
+              <p className="hint" id="idea-help">
+                {t(
+                  "Tell us your funniest idea. AI will turn it into a short story.",
+                )}
+              </p>
+              <textarea
+                aria-describedby="idea-help idea-count"
+                id="idea"
+                value={prompt}
+                maxLength={700}
+                required
+                rows={4}
+                disabled={busy}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={t(
+                  "A robot arrives at a family dinner and takes everything literally…",
+                )}
+              />
+              <p className="hint" id="idea-count">
+                {t(
+                  "{count} / 700 characters · Who is there? Where are they? What goes wrong?",
+                  { count: prompt.length },
+                )}
+              </p>
             </div>
+            <details
+              className="inspiration"
+              open={ideasOpen}
+              onToggle={(event) => setIdeasOpen(event.currentTarget.open)}
+            >
+              <summary>{t("Need an idea?")}</summary>
+              <StoryArt compact />
+              <p className="hint">
+                {t("Pick a starting point. Make it your own.")}
+              </p>
+              <div className="suggestions">
+                {examples.map((x) => (
+                  <button
+                    type="button"
+                    key={x}
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        !prompt.trim() ||
+                        window.confirm(
+                          t("Replace your current idea with this suggestion?"),
+                        )
+                      )
+                        setPrompt(t(x));
+                    }}
+                  >
+                    {t(x)}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={busy || prompt.length > 640}
+                onClick={() =>
+                  setPrompt(
+                    prompt +
+                      t(" Add an unexpected twist and a playful ending."),
+                  )
+                }
+              >
+                {t("Add a twist")}{" "}
+              </button>
+            </details>
+          </div>
+          <div className="creation-submit">
+            <p className="draft-hint">
+              {t("Your draft is kept on this device.")}
+            </p>
             <button
-              type="button"
-              disabled={busy || prompt.length > 640}
-              onClick={() =>
-                setPrompt(
-                  prompt + t(" Add an unexpected twist and a playful ending."),
-                )
+              className="primary full"
+              type="submit"
+              disabled={
+                busy ||
+                !!operation ||
+                (!booth && !name.trim()) ||
+                !prompt.trim()
               }
             >
-              {t("Add a twist")}{" "}
+              <svg
+                className="button-icon"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+              >
+                <path d="m4 20 11-11 3 3-11 11M16 3v4m-2-2h4M6 4v4M4 6h4M19 16v4m-2-2h4" />
+              </svg>
+              {busy ? t("Creating your story…") : t("Create My Funny Story")}
             </button>
-          </section>
-          <button
-            className="primary full"
-            type="submit"
-            disabled={
-              busy || !!operation || (!booth && !name.trim()) || !prompt.trim()
-            }
-          >
-            <svg className="button-icon" aria-hidden="true" viewBox="0 0 24 24">
-              <path d="m4 20 11-11 3 3-11 11M16 3v4m-2-2h4M6 4v4M4 6h4M19 16v4m-2-2h4" />
-            </svg>
-            {busy ? t("Creating your story…") : t("Create My Funny Story")}
-          </button>
+          </div>
         </form>
       )}
     </div>
@@ -804,7 +859,7 @@ function Vote() {
   );
   const votingOpen = !!round.data;
   return (
-    <div className="content">
+    <div className={`content voting-page ${selected ? "reader-active" : ""}`}>
       <div className="page-title">
         <p className="eyebrow">{t("Discover a little delight")}</p>
         <h1>{t("Read and Vote")}</h1>
@@ -915,7 +970,8 @@ function Vote() {
           <p role="status">{t("Loading stories…")}</p>
         )}
         {items.length === 0 && list.data && (
-          <div className="card">
+          <div className="card gameplay-empty">
+            <StoryArt compact />
             <h2>{t("No stories here yet")}</h2>
             <p>{t("Check again once participants have shared their ideas.")}</p>
             <button onClick={list.refresh}>{t("Check for stories")}</button>
@@ -926,7 +982,7 @@ function Vote() {
         >
           {items
             .filter((s) => !selected || s.id === selected)
-            .map((s) => {
+            .map((s, index) => {
               const voted = confirmed[s.id] !== undefined || !!s.voted;
               const currentRating =
                 confirmed[s.id] ??
@@ -940,7 +996,18 @@ function Vote() {
                 (!!round.data?.strictCodes && !round.data.verified);
               if (!selected)
                 return (
-                  <article key={s.id} className="card discovery-card">
+                  <article
+                    key={s.id}
+                    className={`card discovery-card story-tone-${index % 3}`}
+                  >
+                    <div className="story-card-top">
+                      <span className="story-card-number" aria-hidden="true">
+                        {String(offset + index + 1).padStart(2, "0")}
+                      </span>
+                      <span>
+                        {voted ? t("Vote Recorded") : t("Ready to read")}
+                      </span>
+                    </div>
                     <p className="eyebrow">{s.participantName}</p>
                     <h2>{s.title}</h2>
                     <p className="excerpt">
@@ -948,9 +1015,6 @@ function Vote() {
                         ? s.resultText.slice(0, 170) + "\u2026"
                         : s.resultText}
                     </p>
-                    {voted && (
-                      <span className="badge">{t("Vote Recorded")}</span>
-                    )}
                     <button
                       ref={(node) => {
                         galleryButtons.current[s.id] = node;
@@ -1241,6 +1305,24 @@ function Leaderboard() {
             : message(error)}
         </p>
       )}
+      {data && (
+        <div className="event-overview" aria-label={t("Event at a glance")}>
+          <div>
+            <strong>{data.entries.length}</strong>
+            <span>{t("Stories shared")}</span>
+          </div>
+          <div>
+            <strong>
+              {data.entries.reduce((sum, entry) => sum + entry.voteCount, 0)}
+            </strong>
+            <span>{t("Public ratings")}</span>
+          </div>
+          <div>
+            <strong>50 / 50</strong>
+            <span>{t("AI and public scoring")}</span>
+          </div>
+        </div>
+      )}
       <p className="scoring-summary">
         {t("Final Score = 50% AI + 50% Public Votes")}
       </p>
@@ -1298,6 +1380,7 @@ function Leaderboard() {
             </div>
           ) : (
             <div className="ranking-waiting">
+              <StoryArt compact />
               <h2>{t("The next great story could be yours")}</h2>
               <p>
                 {t(
