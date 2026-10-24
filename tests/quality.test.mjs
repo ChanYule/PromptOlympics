@@ -37,7 +37,7 @@ test("malformed JSON, extra fields, excessive length, invalid scores and model t
   await assert.rejects(
     ai(
       JSON.stringify({
-        humour: 4.25,
+        humour: 4.251,
         creativity: 4,
         relevance: 4,
         overall: 4,

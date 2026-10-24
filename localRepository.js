@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { uniqueStoryTitle } from "./storyTitles.js";
 import {
   createCompetition,
   createRound,
@@ -377,7 +378,10 @@ export function createLocalRepository(filename) {
             roundId: j.roundId,
             participantSession: j.sessionId,
             ...j.input,
-            title: j.generated.title,
+            title: uniqueStoryTitle(
+              j.generated.title,
+              round.submissions.filter((s) => !s.deleted).map((s) => s.title),
+            ),
             resultText: j.generated.text,
           });
         j.submissionId = j.id;

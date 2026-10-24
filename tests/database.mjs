@@ -46,6 +46,16 @@ export async function database({ alwaysOpen = true } = {}) {
         "utf8",
       ),
     );
+  if (alwaysOpen)
+    await db.exec(
+      fs.readFileSync(
+        new URL(
+          "../supabase/migrations/007_story_title_guard.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
   return {
     db,
     kind: "postgres-test",

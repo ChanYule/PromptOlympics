@@ -74,6 +74,7 @@ test("worker records a distinct safe failure and sanitized diagnostic for upstre
   let claimed = false;
   const repository = {
     async call(action, payload) {
+      if (action === "leaderboard") return { entries: [] };
       if (action === "claim") {
         if (claimed) return null;
         claimed = true;

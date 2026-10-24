@@ -86,7 +86,7 @@ test("big screen rotates full stories, preserves the current story across rankin
   await page
     .getByRole("button", { name: "Resume story rotation", exact: true })
     .click();
-  await page.clock.fastForward(45000);
+  await page.clock.fastForward(8000);
   await expect(
     spotlight.getByRole("heading", { name: "Story C", exact: true }),
   ).toBeVisible();

@@ -58,7 +58,7 @@ test("Chinese generation uses natural Chinese and enforces character limits with
     en = await ai.generate({ language: "en", prompt: "Robot" });
   assert.match(zh.title, /\p{Script=Han}/u);
   assert.match(zh.text, /\p{Script=Han}/u);
-  assert.equal(en.title, "The Unlikely Chef");
+  assert.equal(en.title, "Bright Ideas Need Soup");
   assert.throws(() =>
     validateStory(
       { title: "标题", text: "字".repeat(401), safeForPublic: true },

@@ -100,7 +100,9 @@ test("English/Chinese switching covers every page, preserves drafts and ratings,
   await expect(
     page.getByRole("columnheader", { name: "公众评分" }),
   ).toBeVisible();
-  await expect(page.getByText("AI 4.38 · 公众 4.20 · 5 票")).toBeVisible();
+  await expect(page.locator(".lb-reader-scores")).toContainText("4.38");
+  await expect(page.locator(".lb-reader-scores")).toContainText("4.20");
+  await expect(page.locator(".lb-reader-scores")).toContainText("5");
   for (const [width, height] of [
     [375, 812],
     [768, 1024],

@@ -20,13 +20,13 @@
   display: none;
 }
 .app {
-  --cream: #f8f6ef;
-  --sage: #e9efe3;
-  --line: #dce2d5;
+  --cream: #f7f7fc;
+  --sage: #e4f2ee;
+  --line: #d5dce8;
   --radius-card: 24px;
   background:
-    radial-gradient(ellipse at 100% 10%, #f4ead4 0, transparent 42%),
-    var(--cream);
+    radial-gradient(ellipse at 100% 10%, #e4ddf7 0, transparent 42%),
+    radial-gradient(ellipse at 0% 65%, #dff2ed 0, transparent 45%), var(--cream);
   min-height: 100vh;
 }
 .topbar {
@@ -38,7 +38,7 @@
   letter-spacing: -0.035em;
 }
 .brand-mark {
-  background: var(--green);
+  background: #524197;
   color: white;
   border-radius: 14px;
 }
@@ -68,7 +68,15 @@ button,
 }
 button.primary,
 .button.primary {
-  box-shadow: 0 3px 0 #103f31;
+  background: #524197;
+  border-color: #524197;
+  color: #fff;
+  box-shadow: 0 3px 0 #352664;
+}
+button.primary:hover:not(:disabled),
+.button.primary:hover {
+  background: #403079;
+  border-color: #403079;
 }
 button.primary:disabled {
   box-shadow: none;
@@ -77,8 +85,9 @@ button.primary:disabled {
   letter-spacing: -0.045em;
 }
 .round-status {
-  border: 1px solid #d5e0cd;
-  background: #edf2e7;
+  border: 1px solid #a8d4c7;
+  background: #e1f3ed;
+  color: #145844;
 }
 .home-page .hero {
   gap: 64px;
@@ -94,7 +103,7 @@ button.primary:disabled {
 .hero-note {
   border: 1px solid #d8dec8;
   border-radius: 32px 32px 90px 32px;
-  background: #ecf0df;
+  background: #e9e4f7;
   text-align: center;
   padding: 24px 30px 34px;
 }
@@ -286,9 +295,9 @@ button.primary:disabled {
 }
 .story-result,
 .focused-story article {
-  border-top: 5px solid var(--green);
+  border-top: 5px solid #7560b5;
   padding: clamp(24px, 4vw, 42px);
-  background: #fffefa;
+  background: #fcfaff;
 }
 .story-heading {
   display: flex;
@@ -547,6 +556,38 @@ button.primary:disabled {
 .projector .event-overview,
 .projector .ranking-waiting .story-art {
   display: none;
+}
+/* A restrained palette: violet for creating, teal for reading, amber for scores. */
+.workspace-heading {
+  background: #ede7fa;
+  color: #443175;
+}
+.creation-workspace .inspiration {
+  background: #e8f4f1;
+}
+.creation-stepper li[aria-current="step"] {
+  color: #443175;
+}
+.generated-vote {
+  background: #edf5fa;
+  border-color: #bfd7e6;
+}
+.discovery-card {
+  background: #f5f1fc;
+  border-top-color: #7560b5;
+}
+.discovery-card.story-tone-1 {
+  background: #edf7f4;
+  border-top-color: #23836d;
+}
+.discovery-card.story-tone-2 {
+  background: #fff4e7;
+  border-top-color: #bd723e;
+}
+.badge {
+  background: #e1f2eb;
+  color: #15533f;
+  border: 1px solid #aed6c6;
 }
 .contrast {
   --line: #526859;

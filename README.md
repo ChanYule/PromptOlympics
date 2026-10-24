@@ -73,7 +73,7 @@ Supabase is the authoritative store. A database outage produces a retryable fail
 
 The active round stays in `SUBMISSIONS_OPEN`, with story creation and public voting available together. Organiser actions cannot close, publish or replace it. Historical published snapshots remain unchanged. Download a CSV and backup when announcing standings; the live leaderboard continues updating.
 
-New Gemini rubric v2: humour 50%, creativity 25%, relevance 25%, each criterion from 1 to 5 in one decimal place. Creativity is stored in the existing originality column for schema compatibility; historical scores and rubric versions are retained. The server validates and stores the model, rubric and precise weighted score. No fallback/keyword score is fabricated.
+Gemini rubric v3: humour 50%, creativity 25%, relevance 25%, each criterion from 1 to 5 with up to two decimal places. Evidence-based anchors include coherence and readability; identical marks remain valid for equal quality. Creativity is stored in the existing originality column for schema compatibility; historical scores and rubric versions are retained. The server validates and stores the model, rubric and precise weighted score. No fallback/keyword score or random variation is fabricated. Apply migration 007 after 006 for concurrent duplicate-title protection; see [Supabase setup](SUPABASE_SETUP.md).
 
 Public score = sum of valid ratings / vote count. Combined score = 50% AI + 50% public average. No public votes means no combined score; the AI value remains provisional. Missing AI means no final score. The default award threshold is five public votes, configurable in the organiser dashboard. All stories remain visible regardless of eligibility.
 

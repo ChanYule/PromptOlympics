@@ -1,7 +1,7 @@
 import { StoryArt } from "./StoryArt";
 import { GeneratedVote } from "./GeneratedVote";
 import { RatingStars } from "./RatingStars";
-import { LeaderboardStories } from "./LeaderboardStories";
+import { Leaderboard } from "./Leaderboard";
 import { Booth } from "./Booth";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,7 +15,7 @@ import {
   finishParticipant,
 } from "./api";
 import { useFeed } from "./useFeed";
-import type { Round, Rankings, Story, Job, RoundState } from "./types";
+import type { Round, Story, Job, RoundState } from "./types";
 import {
   t,
   message,
@@ -26,6 +26,7 @@ import {
 } from "./i18n";
 import "./styles.css";
 import "./gameplay.css";
+import "./leaderboard.css";
 const labels: Record<RoundState, string> = {
   WAITING: "Waiting to begin",
   SUBMISSIONS_OPEN: "Story creation is open",
@@ -86,7 +87,7 @@ function App() {
   }
   return (
     <div
-      className={`app ${large ? "large-text" : ""} ${contrast ? "contrast" : ""} ${reduced ? "reduced" : ""}`}
+      className={`app ${path === "/leaderboard" ? "leaderboard-app" : ""} ${large ? "large-text" : ""} ${contrast ? "contrast" : ""} ${reduced ? "reduced" : ""}`}
     >
       <a className="skip" href="#main">
         {t("Skip to content")}{" "}
@@ -1142,293 +1143,6 @@ function Vote() {
     </div>
   );
 }
-function Leaderboard() {
-  const historicalRound = new URLSearchParams(window.location.search).get(
-    "round",
-  );
-  const { data, error, updated, refresh } = useFeed<Rankings>(
-    "/api/leaderboard" +
-      (historicalRound
-        ? "?roundId=" + encodeURIComponent(historicalRound)
-        : ""),
-  );
-  const [projector, setProjector] = useState(false);
-  useEffect(() => {
-    if (!projector) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const surroundings = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        ".topbar, .utility-bar, footer, .skip",
-      ),
-    );
-    const states = surroundings.map((element) => element.inert);
-    surroundings.forEach((element) => {
-      element.inert = true;
-    });
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document
-      .querySelector<HTMLButtonElement>(".leaderboard-heading button")
-      ?.focus();
-    return () => {
-      surroundings.forEach((element, index) => {
-        element.inert = states[index];
-      });
-      document.body.style.overflow = overflow;
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
-    };
-  }, [projector]);
-  useEffect(() => {
-    const listener = () => {
-      if (!document.fullscreenElement) setProjector(false);
-    };
-    document.addEventListener("fullscreenchange", listener);
-    return () => {
-      document.removeEventListener("fullscreenchange", listener);
-    };
-  }, []);
-  async function fullscreen() {
-    if (projector) {
-      setProjector(false);
-      if (document.fullscreenElement) await document.exitFullscreen();
-    } else {
-      setProjector(true);
-      try {
-        await document
-          .querySelector(".leaderboard-screen")
-          ?.requestFullscreen();
-      } catch {
-        /* Clean presentation layout remains available. */
-      }
-    }
-  }
-  const eligible = data?.entries.filter((e) => e.eligible) || [];
-  const provisional = data?.entries.filter((e) => !e.eligible) || [];
-  function standings(entries: Rankings["entries"], official: boolean) {
-    return (
-      <div
-        className="rankings event-rankings"
-        role="table"
-        aria-label={
-          official ? t("Competition rankings") : t("Provisional standings")
-        }
-      >
-        <div className="rank-row table-heading" role="row">
-          {[
-            t("Rank"),
-            t("Participant"),
-            t("Story"),
-            t("AI Score"),
-            t("Public Score"),
-            t("Total Score"),
-            t("Votes"),
-          ].map((label) => (
-            <span key={label} role="columnheader">
-              {label}
-            </span>
-          ))}
-        </div>
-        {entries.map((e, i) => (
-          <div
-            className={"rank-row " + (official && i < 3 ? "eligible-top" : "")}
-            key={e.submissionId}
-            role="row"
-          >
-            <span className="rank-number" role="cell">
-              {official ? String(i + 1).padStart(2, "0") : "\u2014"}
-            </span>
-            <strong className="participant-cell" role="cell">
-              {e.participantName}
-              <small>{official ? t("Award eligible") : t("Provisional")}</small>
-            </strong>
-            <span className="title-cell" role="cell">
-              {e.title}
-              {e.aiScore == null && (
-                <small>
-                  {t("AI judging {status}", { status: t(e.judgingStatus) })}
-                </small>
-              )}
-            </span>
-            <span className="metric" role="cell">
-              <small>{t("AI Score")}</small>
-              {score(e.aiScore)}
-            </span>
-            <span className="metric" role="cell">
-              <small>{t("Public Score")}</small>
-              {score(e.averageScore)}
-            </span>
-            <strong className="metric total-score" role="cell">
-              <small>{t("Total Score")}</small>
-              {score(e.finalScore)}
-            </strong>
-            <span className="metric" role="cell">
-              <small>{t("Votes")}</small>
-              {e.voteCount}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <section
-      className={`content leaderboard-screen ${projector ? "projector" : ""}`}
-    >
-      <div className="page-title leaderboard-heading">
-        <div>
-          <p className="eyebrow">{t("Prompt Olympics")}</p>
-          <h1>{t("Prompt Olympics Leaderboard")}</h1>
-          <p className="intro">{t("See which funny stories are leading!")}</p>
-          <RoundStatus round={data?.round || null} />
-        </div>
-        <button onClick={fullscreen}>
-          {projector ? t("Exit Presentation") : t("Presentation Mode")}
-        </button>
-      </div>
-      <div className="refresh-line">
-        <span>
-          {updated
-            ? t("Updated at {time}", {
-                time: updated.toLocaleTimeString(getLocale(), {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }),
-              })
-            : t("Loading the latest confirmed rankings\u2026")}
-        </span>
-        <button onClick={refresh}>{t("Refresh Now")}</button>
-      </div>
-      {error && (
-        <p className="refresh-error" role="status">
-          {data
-            ? t("Connection interrupted. Showing the last confirmed rankings.")
-            : message(error)}
-        </p>
-      )}
-      {data && (
-        <div className="event-overview" aria-label={t("Event at a glance")}>
-          <div>
-            <strong>{data.entries.length}</strong>
-            <span>{t("Stories shared")}</span>
-          </div>
-          <div>
-            <strong>
-              {data.entries.reduce((sum, entry) => sum + entry.voteCount, 0)}
-            </strong>
-            <span>{t("Public ratings")}</span>
-          </div>
-          <div>
-            <strong>50 / 50</strong>
-            <span>{t("AI and public scoring")}</span>
-          </div>
-        </div>
-      )}
-      <p className="scoring-summary">
-        {t("Final Score = 50% AI + 50% Public Votes")}
-      </p>
-      <details className="scoring-details">
-        <summary>{t("How rankings work")}</summary>
-        <p>
-          {t(
-            "At least {count} public votes are needed to qualify for the final awards.",
-            { count: data?.round.minVotes ?? 5 },
-          )}
-        </p>
-        <p>
-          {t(
-            "50% AI + 50% public average. Public votes required for award eligibility: {count}. Ties: public score, AI score, vote count, then story ID.",
-            { count: data?.round.minVotes ?? 5 },
-          )}
-        </p>
-      </details>
-      {data && (
-        <>
-          {eligible.length ? (
-            <div className="podium event-podium">
-              {eligible.slice(0, 3).map((e, i) => (
-                <article
-                  key={e.submissionId}
-                  className={`podium-card place-${i + 1}`}
-                >
-                  <span
-                    className="medal"
-                    aria-label={t("Rank {rank}", { rank: i + 1 })}
-                  >
-                    <svg aria-hidden="true" viewBox="0 0 24 24">
-                      <path d="M8 3h8v6a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4M12 13v5m-4 3h8m-6-3h4v3" />
-                    </svg>
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="badge">
-                    {data.final ? t("Final Results") : t("Award eligible")}
-                  </span>
-                  <h2>{e.participantName}</h2>
-                  <p>{e.title}</p>
-                  <strong>
-                    {score(e.finalScore)}
-                    <small> / 5</small>
-                  </strong>
-                  <div className="score-detail">
-                    {t("AI {ai} \u00b7 Public {public} \u00b7 {count} votes", {
-                      ai: score(e.aiScore),
-                      public: score(e.averageScore),
-                      count: e.voteCount,
-                    })}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="ranking-waiting">
-              <StoryArt compact />
-              <h2>{t("The next great story could be yours")}</h2>
-              <p>
-                {t(
-                  "Stories are being created. Public votes will determine the rankings!",
-                )}
-              </p>
-              <small>
-                {t(
-                  "At least {count} public votes are needed to qualify for the final awards.",
-                  { count: data.round.minVotes },
-                )}
-              </small>
-            </div>
-          )}
-          <div className="leaderboard-layout">
-            <div className="leaderboard-results">
-              {!!eligible.length && (
-                <section>
-                  <h2>{t("Award standings")}</h2>
-                  {standings(eligible, true)}
-                </section>
-              )}
-              {!!provisional.length && (
-                <section className="provisional-standings">
-                  <h2>{t("Provisional standings")}</h2>
-                  <p className="hint">
-                    {t(
-                      "Live scores. Awards are confirmed after enough public votes.",
-                    )}
-                  </p>
-                  {standings(provisional, false)}
-                </section>
-              )}
-            </div>
-            <LeaderboardStories
-              entries={data.entries}
-              presentation={projector}
-            />
-          </div>
-          {!data.entries.length && (
-            <p className="card">{t("No stories in this round yet.")}</p>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
 type AdminData = {
   round: Round;
   data: Record<string, any>;

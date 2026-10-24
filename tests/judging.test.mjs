@@ -18,9 +18,9 @@ test("real Gemini response path persists judging model and score in PostgreSQL",
           text: JSON.stringify(
             judging
               ? {
-                  humour: 4.5,
-                  creativity: 4,
-                  relevance: 4.5,
+                  humour: 3.68,
+                  creativity: 3.92,
+                  relevance: 4.08,
                   overall: 5,
                   reason: "A strong ending.",
                 }
@@ -64,7 +64,8 @@ test("real Gemini response path persists judging model and score in PostgreSQL",
     assert.equal(job.status, "ready", job.error);
     const score = (await repo.db.query("select * from po_judgements")).rows[0];
     assert.equal(score.model, "gemini-3.6-flash");
-    assert.equal(Number(score.overall), 4.375);
+    assert.equal(Number(score.overall), 3.84);
+    assert.equal(score.rubric, "humour-50-creativity-25-relevance-25-v3");
     assert.equal(requests.length, 3);
   } finally {
     worker?.stop();

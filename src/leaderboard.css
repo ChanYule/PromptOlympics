@@ -1,0 +1,950 @@
+/* Viewport workspace: the app chrome participates in flex sizing, so panels use
+   the actual remaining height rather than a guessed header pixel offset. */
+.app.leaderboard-app {
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.leaderboard-app > .topbar,
+.leaderboard-app > .utility-bar {
+  flex: 0 0 auto;
+}
+.leaderboard-app > .utility-bar {
+  margin-block: 0;
+  width: 100%;
+  max-width: none;
+  padding-block: 6px;
+}
+.leaderboard-app > main {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+}
+.leaderboard-app > footer {
+  display: none;
+}
+.lbcompact.leaderboard-screen {
+  width: 100%;
+  max-width: 1920px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 24px 16px;
+  font-size: 1rem;
+  overflow: hidden;
+}
+.lbcompact .leaderboard-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  margin: 0;
+}
+.lbcompact .leaderboard-heading h1 {
+  font-size: clamp(1.25em, 1.8vw, 1.6em);
+  margin: 2px 0;
+  line-height: 1.15;
+}
+.lbcompact .leaderboard-heading .eyebrow {
+  display: none;
+}
+.lbcompact .lb-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.lbcompact button,
+.lbcompact .button {
+  min-height: 44px;
+  font-size: 0.76em;
+  padding: 8px 12px;
+}
+.lbcompact .lb-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  border-radius: 12px;
+  flex: none;
+  font-size: 0.72em;
+}
+.lbcompact .lb-live,
+.lbcompact .lb-totals {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.lbcompact .lb-live {
+  font-weight: 700;
+  color: var(--green);
+}
+.lbcompact .lb-live > span:last-child:not(.status-dot) {
+  color: var(--muted);
+  font-weight: 500;
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+}
+.lbcompact .lb-totals {
+  color: var(--muted);
+}
+.lbcompact .lb-totals strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.lbcompact .lb-updated {
+  margin-left: auto;
+  color: var(--muted);
+}
+.lbcompact .lb-scoring {
+  position: relative;
+}
+.lbcompact .lb-scoring summary {
+  font-size: 1em;
+  min-height: 36px;
+  padding: 8px 0;
+}
+.lbcompact .lb-scoring > div {
+  position: absolute;
+  z-index: 15;
+  right: 0;
+  top: 100%;
+  width: min(410px, 85vw);
+  max-height: 50dvh;
+  overflow: auto;
+  background: #fffdf8;
+  padding: 14px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px #20362f26;
+}
+.lbcompact .lb-scoring p {
+  margin: 10px 0;
+}
+.lbcompact .lb-refresh-error {
+  flex: none;
+  margin: 0;
+  padding: 7px 12px;
+  background: #fff0d3;
+  border: 1px solid #c29d52;
+  border-radius: 8px;
+  font-size: 0.75em;
+  line-height: 1.4;
+}
+.lbcompact .lb-tabs {
+  display: none;
+}
+.lbcompact .lb-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 0.38fr) minmax(0, 0.62fr);
+  gap: 16px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.lbcompact .lb-score-panel,
+.lbcompact .lb-reader-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fffefa;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+.lbcompact .lb-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 16px;
+  flex: none;
+  background: #edf2e7;
+}
+.lbcompact .lb-panel-heading h2 {
+  font-size: 0.95em;
+  margin: 0;
+}
+.lbcompact .lb-panel-heading > span {
+  font-size: 0.68em;
+  color: var(--muted);
+}
+.lbcompact .lb-score-scroll {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  flex: 1 1 0;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.lbcompact .lb-group-heading {
+  padding: 10px 12px 6px;
+  font-size: 0.76em;
+  margin: 0;
+  color: var(--green);
+}
+.lbcompact .lb-group-note {
+  font-size: 0.68em;
+  line-height: 1.4;
+  margin: 0;
+  padding: 0 12px 10px;
+  color: var(--muted);
+}
+.lbcompact .lb-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: 0.76em;
+  overflow: visible;
+}
+.lbcompact .lb-rank-col {
+  width: 9%;
+}
+.lbcompact .lb-name-col {
+  width: 21%;
+}
+.lbcompact .lb-title-col {
+  width: 22%;
+}
+.lbcompact .lb-score-col {
+  width: 12%;
+}
+.lbcompact .lb-votes-col {
+  width: 12%;
+}
+.lbcompact .lb-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 9px 5px;
+  border-block: 1px solid var(--line);
+  background: #f0f3eb;
+  font-size: 0.86em;
+  text-align: right;
+  line-height: 1.3;
+  overflow-wrap: normal;
+}
+.lbcompact .lb-table th:nth-child(2),
+.lbcompact .lb-table th:nth-child(3) {
+  text-align: left;
+}
+.lbcompact .lb-table th:first-child {
+  text-align: center;
+}
+.lbcompact .lb-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 5px;
+  vertical-align: middle;
+  background: #fffefa;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.lbcompact .lb-table .lb-row {
+  cursor: pointer;
+}
+.lbcompact .lb-row:nth-child(even) td {
+  background: #f8f9f3;
+}
+.lbcompact .lb-row:hover td {
+  background: #f1f2de;
+}
+.lbcompact .lb-row.is-selected td {
+  background: #e6efdf;
+}
+.lbcompact .lb-row.is-selected td:first-child {
+  box-shadow: inset 4px 0 var(--green);
+}
+.lbcompact .lb-rank {
+  text-align: center;
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.lbcompact .top-ranked .lb-rank > span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 32px;
+  background: #f4e5b5;
+  color: #63480d;
+  border-radius: 8px;
+}
+.lbcompact .place-2 .lb-rank > span {
+  background: #e3eae5;
+  color: #304c40;
+}
+.lbcompact .place-3 .lb-rank > span {
+  background: #f3e3d6;
+  color: #72452b;
+}
+.lbcompact .lb-name strong {
+  font-weight: 700;
+}
+.lbcompact .lb-name small,
+.lbcompact .lb-title small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.84em;
+  margin-top: 4px;
+}
+.lbcompact .lb-title button {
+  display: block;
+  width: 100%;
+  padding: 3px 0;
+  text-align: left;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
+  font-size: 1em;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.lbcompact .lb-title button:focus-visible {
+  outline-offset: 2px;
+}
+.lbcompact .lb-metric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lbcompact .lb-metric small {
+  display: none;
+}
+.lbcompact .lb-table .total-score {
+  color: var(--green);
+  font-size: 1em;
+}
+.lbcompact .lb-reader-article {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  background: #fffefa;
+  border: 0;
+  border-radius: 0;
+}
+.lbcompact .lb-reader-heading {
+  padding: 16px 20px 12px;
+  flex: none;
+  border-bottom: 1px solid var(--line);
+}
+.lbcompact .lb-reader-heading .eyebrow {
+  font-size: 0.65em;
+  margin: 0 0 8px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+}
+.lbcompact .lb-reader-heading h3 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.65em, 2.5vw, 2.35em);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  margin: 0 0 14px;
+}
+.lbcompact .lb-reader-heading h3:focus {
+  outline: none;
+}
+.lbcompact .lb-reader-scores {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  gap: 8px;
+}
+.lbcompact .lb-reader-scores > div {
+  padding-right: 8px;
+  border-right: 1px solid var(--line);
+}
+.lbcompact .lb-reader-scores > div:last-child {
+  border: 0;
+  padding-right: 0;
+}
+.lbcompact .lb-reader-scores dt {
+  color: var(--muted);
+  font-size: 0.65em;
+  margin-bottom: 4px;
+}
+.lbcompact .lb-reader-scores dd {
+  margin: 0;
+  font-size: 1.12em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.lbcompact .lb-reader-scores > div:nth-child(3) dd {
+  color: var(--green);
+}
+.lbcompact .lb-story-scroll {
+  min-height: 0;
+  flex: 1 1 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 4px 20px 12px;
+}
+.lbcompact .lb-story-scroll .story-text {
+  font-size: 1.1em;
+  line-height: 1.8;
+  margin: 14px 0;
+  white-space: pre-wrap;
+}
+.lbcompact .lb-reader-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  flex: none;
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: #f4f6ee;
+}
+.lbcompact .lb-story-navigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+}
+.lbcompact .lb-reader-nav button {
+  min-width: 0;
+  min-height: 44px;
+  font-size: 0.75em;
+  margin: 0;
+}
+.lbcompact .lb-empty {
+  margin: auto;
+  text-align: center;
+  padding: 24px;
+  color: var(--muted);
+}
+.lbcompact .lb-empty h2,
+.lbcompact .lb-empty h3 {
+  font-size: 1.1em;
+  color: var(--ink);
+}
+.lbcompact .lb-empty p {
+  font-size: 0.85em;
+}
+.lbcompact :focus-visible {
+  outline-offset: -3px;
+}
+.large-text .lbcompact {
+  font-size: 1.12rem;
+}
+.lbcompact.projector {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  background: var(--cream);
+  padding: 16px 24px;
+  font-size: 1.15rem;
+  z-index: 50;
+}
+.lbcompact.projector .lb-workspace {
+  grid-template-columns: minmax(0, 0.38fr) minmax(0, 0.62fr);
+}
+.lbcompact.projector .lb-reader-panel {
+  grid-column: 2;
+  grid-row: 1;
+  order: 0;
+}
+.lbcompact.projector .lb-story-scroll .story-text {
+  font-size: 1.12em;
+  line-height: 1.8;
+}
+/* Colour supports the same stage hierarchy in normal and presentation modes. */
+.lbcompact .lb-toolbar {
+  background: #eef5f9;
+  border-color: #c7dce8;
+}
+.lbcompact .lb-live {
+  background: #d9efe6;
+  border-radius: 8px;
+  padding: 3px 7px;
+  color: #14533e;
+}
+.lbcompact .lb-score-panel > .lb-panel-heading {
+  background: #e8e3f6;
+  color: #443175;
+}
+.lbcompact .lb-row:hover td {
+  background: #f0ebfa;
+}
+.lbcompact .lb-row.is-selected td {
+  background: #e5ddf7;
+}
+.lbcompact .lb-row.is-selected td:first-child {
+  box-shadow: inset 4px 0 #6850a6;
+}
+.lbcompact .lb-name strong {
+  color: #23394b;
+}
+.lbcompact .lb-title button {
+  color: #514078;
+}
+.lbcompact .lb-name .lb-entry-status {
+  width: fit-content;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: #fff0d7;
+  color: #795016;
+  font-size: 0.8em;
+}
+.lbcompact .lb-name .is-qualified {
+  background: #dff0e9;
+  color: #15533f;
+}
+.lbcompact .top-ranked .lb-rank > span {
+  background: #f8df9b;
+  color: #60420b;
+}
+.lbcompact .place-2 .lb-rank > span {
+  background: #dfe8f3;
+  color: #354c69;
+}
+.lbcompact .place-3 .lb-rank > span {
+  background: #f2d8c6;
+  color: #754427;
+}
+.lbcompact .lb-table .total-score strong {
+  display: inline-block;
+  border-radius: 5px;
+  background: #ffebba;
+  color: #68480b;
+  padding: 3px 4px;
+}
+/* The feature story is the main stage; scores remain a quiet supporting rail. */
+.lbcompact .lb-reader-panel {
+  max-width: none;
+  width: auto;
+  order: 0;
+  grid-column: 2;
+  grid-row: 1;
+  border-color: #8fc3b5;
+  box-shadow: 0 7px 24px #253e2810;
+}
+.lbcompact .lb-reader-panel > .lb-panel-heading {
+  background: #17594f;
+  color: #fffdf5;
+  border-bottom: 0;
+}
+.lbcompact .lb-reader-panel > .lb-panel-heading > span {
+  color: #edf1d8;
+}
+.lbcompact .lb-reader-heading {
+  padding: 22px 28px 18px;
+  background: #f1f8f6;
+}
+.lbcompact .lb-reader-heading .eyebrow {
+  color: #39604c;
+}
+.lbcompact .lb-reader-scores {
+  gap: 10px;
+}
+.lbcompact .lb-reader-scores > div {
+  border: 0;
+  background: #e3eaf8;
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+.lbcompact .lb-reader-scores > div:nth-child(3) {
+  background: #ffebba;
+}
+.lbcompact .lb-reader-scores > div:nth-child(2) {
+  background: #e9e1f6;
+}
+.lbcompact .lb-reader-scores > div:nth-child(4) {
+  background: #def0e9;
+}
+.lbcompact .lb-reader-scores > div:last-child {
+  padding: 9px 12px;
+}
+.lbcompact .lb-reader-scores dd {
+  font-size: 1.2em;
+}
+.lbcompact .lb-story-scroll {
+  padding-inline: 28px;
+}
+.lbcompact .lb-reader-nav {
+  padding: 12px 20px;
+  gap: 8px;
+  background: #edf4f4;
+}
+.lbcompact .lb-slide-toggle {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+  min-width: 100px;
+}
+.lbcompact .lb-slide-toggle:hover {
+  background: #0c4936;
+  color: white;
+}
+.lbcompact .lb-slide-toggle:disabled {
+  background: #e5e9e3;
+  border-color: #c8d0c7;
+  color: #536158;
+}
+.lbcompact .lb-slide-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 10px;
+}
+.lbcompact .lb-slide-settings label {
+  margin: 0;
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--muted);
+}
+.lbcompact .lb-slide-settings select {
+  font: inherit;
+  font-size: 0.7em;
+  color: var(--ink);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  min-height: 44px;
+  padding: 6px 26px 6px 10px;
+  max-width: 100%;
+}
+.lbcompact .lb-slide-settings [role="status"] {
+  font-size: 0.65em;
+  color: var(--muted);
+}
+.lbcompact .lb-slide-progress {
+  height: 3px;
+  flex: none;
+  background: #e7ecde;
+  overflow: hidden;
+}
+.lbcompact .lb-slide-progress > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #d4ac50;
+  animation: story-progress linear both;
+}
+@keyframes story-progress {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+.lbcompact .lb-action-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.lbcompact .lb-title button {
+  scroll-margin-block: 52px 12px;
+}
+@media (min-width: 1600px) {
+  .lbcompact {
+    font-size: 1.08rem;
+  }
+  .lbcompact .lb-table {
+    font-size: 0.83em;
+  }
+  .lbcompact.projector {
+    font-size: 1.3rem;
+  }
+}
+@media (min-width: 960px) and (max-width: 1100px) {
+  .lbcompact.projector .lb-table {
+    font-size: 0.7em;
+  }
+}
+@media (max-width: 1100px) {
+  .lbcompact .lb-table th,
+  .lbcompact .lb-table td {
+    padding-inline: 4px;
+  }
+  .lbcompact .top-ranked .lb-rank > span {
+    width: 22px;
+    height: 28px;
+  }
+  .lbcompact .lb-table th {
+    font-size: 0.82em;
+  }
+
+  .lbcompact.leaderboard-screen {
+    padding: 10px 14px 14px;
+    gap: 10px;
+  }
+  .lbcompact .lb-workspace {
+    gap: 12px;
+  }
+  .lbcompact .lb-toolbar {
+    gap: 4px 12px;
+  }
+  .lbcompact .lb-reader-heading {
+    padding: 14px 16px 10px;
+  }
+  .lbcompact .lb-story-scroll {
+    padding-inline: 16px;
+  }
+  .lbcompact .lb-header-actions button {
+    padding-inline: 10px;
+  }
+}
+@media (max-width: 959px) {
+  .lbcompact .lb-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    background: #e5ebdf;
+    padding: 4px;
+    border-radius: 12px;
+    flex: none;
+  }
+  .lbcompact .lb-tabs button {
+    border-color: transparent;
+    background: transparent;
+  }
+  .lbcompact .lb-tabs button[aria-selected="true"] {
+    background: #fffefa;
+    border-color: var(--line);
+    color: var(--green);
+    box-shadow: 0 2px 6px #20362f12;
+  }
+  .lbcompact .lb-workspace,
+  .lbcompact.projector .lb-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .lbcompact .lb-workspace > * {
+    flex: 1 1 0;
+  }
+  .lbcompact .lb-workspace[data-view="scores"] .lb-reader-panel,
+  .lbcompact .lb-workspace[data-view="story"] .lb-score-panel {
+    display: none;
+  }
+  .lbcompact .lb-updated {
+    margin-left: 0;
+  }
+  .lbcompact .lb-scoring {
+    margin-left: auto;
+  }
+}
+@media (max-width: 680px) {
+  .lbcompact .lb-header-actions {
+    flex-direction: row;
+    gap: 6px;
+  }
+  .lbcompact .lb-header-actions button {
+    width: 44px;
+    height: 44px;
+    padding: 8px;
+  }
+  .lbcompact .lb-header-actions .lb-action-label {
+    display: none;
+  }
+  .lbcompact .lb-story-navigation {
+    gap: 6px;
+  }
+  .lbcompact .lb-slide-toggle {
+    min-width: 68px;
+  }
+  .lbcompact .lb-reader-nav button {
+    padding-inline: 6px;
+  }
+  .lbcompact .lb-slide-settings {
+    gap: 4px 8px;
+  }
+  .lbcompact .lb-slide-settings [role="status"] {
+    display: none;
+  }
+  .lbcompact .lb-reader-scores > div,
+  .lbcompact .lb-reader-scores > div:last-child {
+    padding: 7px 6px;
+  }
+  .lbcompact .lb-reader-heading .eyebrow {
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.35;
+    margin-bottom: 6px;
+  }
+
+  .leaderboard-app > .topbar {
+    padding-block: 8px 4px;
+  }
+  .leaderboard-app > .utility-bar {
+    padding-block: 4px 8px;
+    gap: 0 8px;
+  }
+  .lbcompact.leaderboard-screen {
+    padding: 8px 12px 12px;
+    gap: 8px;
+  }
+  .lbcompact .leaderboard-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .lbcompact .leaderboard-heading h1 {
+    font-size: 1.1em;
+  }
+  .lbcompact .leaderboard-heading .eyebrow {
+    display: none;
+  }
+  .lbcompact .lb-header-actions {
+    gap: 6px;
+    flex-direction: row;
+  }
+  .lbcompact .lb-header-actions button {
+    font-size: 0.65em;
+    min-height: 44px;
+    padding: 6px 8px;
+  }
+  .lbcompact .lb-toolbar {
+    font-size: 0.68em;
+    padding: 4px 10px;
+    gap: 2px 10px;
+  }
+  .lbcompact .lb-live {
+    gap: 6px;
+    padding: 0;
+  }
+  .lbcompact .lb-live > span:last-child:not(.status-dot) {
+    padding-left: 6px;
+  }
+  .lbcompact .lb-totals {
+    gap: 8px;
+  }
+  .lbcompact .lb-scoring summary {
+    min-height: 36px;
+  }
+  .lbcompact .lb-table,
+  .lbcompact .lb-table tbody {
+    display: block;
+  }
+  .lbcompact .lb-table colgroup {
+    display: none;
+  }
+  .lbcompact .lb-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .lbcompact .lb-table .lb-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-bottom: 1px solid var(--line);
+    background: #fffefa;
+    padding: 10px 12px;
+    gap: 4px 10px;
+  }
+  .lbcompact .lb-table .lb-row td {
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .lbcompact .lb-table .lb-row:nth-child(even) {
+    background: #f8f9f3;
+  }
+  .lbcompact .lb-table .lb-row.is-selected {
+    background: #e5ddf7;
+    box-shadow: inset 4px 0 #6850a6;
+  }
+  .lbcompact .lb-row.is-selected td:first-child {
+    box-shadow: none;
+  }
+  .lbcompact .lb-rank {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    text-align: left;
+    align-self: start;
+    padding-top: 3px;
+  }
+  .lbcompact .lb-name {
+    grid-column: 2 / -1;
+  }
+  .lbcompact .lb-title {
+    grid-column: 2 / -1;
+  }
+  .lbcompact .lb-title button {
+    min-height: 44px;
+  }
+  .lbcompact .lb-metric {
+    text-align: left;
+    padding-top: 7px !important;
+  }
+  .lbcompact .lb-metric small {
+    display: block;
+    font-size: 0.8em;
+    color: var(--muted);
+    margin-bottom: 3px;
+    white-space: normal;
+  }
+  .lbcompact .lb-reader-heading {
+    padding: 12px 14px;
+  }
+  .lbcompact .lb-reader-heading h3 {
+    font-size: 1.3em;
+    margin-bottom: 8px;
+  }
+  .lbcompact .lb-reader-scores dt {
+    font-size: 0.64em;
+  }
+  .lbcompact .lb-reader-scores dd {
+    font-size: 1.05em;
+  }
+  .lbcompact .lb-panel-heading {
+    padding: 10px 12px;
+  }
+  .lbcompact .lb-reader-nav {
+    padding: 10px 12px;
+  }
+  .lbcompact .lb-story-scroll {
+    padding: 0 14px 12px;
+  }
+  .lbcompact .lb-story-scroll .story-text {
+    font-size: 0.95em;
+  }
+  .lbcompact.projector {
+    font-size: 1rem;
+  }
+}
+@media (max-height: 600px) and (min-width: 960px) {
+  .lbcompact .leaderboard-heading .eyebrow {
+    display: none;
+  }
+  .lbcompact .lb-reader-heading {
+    padding-block: 8px;
+  }
+  .lbcompact .lb-reader-nav {
+    padding-block: 6px;
+  }
+}

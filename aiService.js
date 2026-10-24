@@ -7,7 +7,7 @@ import {
   STORY_SCHEMA,
   JUDGE_SCHEMA,
 } from "./aiPrompts.js";
-export const RUBRIC = "humour-50-creativity-25-relevance-25-v2";
+export const RUBRIC = "humour-50-creativity-25-relevance-25-v3";
 export function validateStory(value, language = "en") {
   if (
     !value ||
@@ -123,7 +123,7 @@ export function createAiService(
         );
       if (mock)
         return validateStory({
-          title: "The Unlikely Chef",
+          title: "Bright Ideas Need Soup",
           text: "The robot opened a noodle stall. Its first customer asked for something light, so it served a bowl with a torch. The auntie sighed, handed it a ladle, and explained lunch. By closing time, the robot had learned one useful lesson: bright ideas still need soup.",
           safeForPublic: true,
         });
@@ -132,6 +132,7 @@ export function createAiService(
           idea: input.prompt,
           challenge: input.theme || "Creative Story",
           newVersion: !!input.regenerate,
+          avoidTitles: (input.avoidTitles || []).slice(0, 80),
         }),
         storyInstruction(input.language),
         STORY_SCHEMA,
@@ -178,7 +179,7 @@ export function createAiService(
           output[key] < 1 ||
           output[key] > 5 ||
           (key !== "overall" &&
-            Math.abs(output[key] * 10 - Math.round(output[key] * 10)) > 1e-8)
+            Math.abs(output[key] * 100 - Math.round(output[key] * 100)) > 1e-8)
         )
           throw new Error("Invalid judging response.");
       }
@@ -218,7 +219,13 @@ export function startWorker(
         });
       } else {
         if (!job.generated) {
-          const generated = await ai.generate(job.input);
+          const leaderboard = await repository.call("leaderboard", {
+            roundId: job.roundId,
+          });
+          const generated = await ai.generate({
+            ...job.input,
+            avoidTitles: leaderboard.entries.map((entry) => entry.title),
+          });
           await repository.call("generated", {
             jobId: job.id,
             token: job.leaseToken,

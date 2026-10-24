@@ -4,6 +4,8 @@ Use a separate Supabase test project first. These operations have not been appli
 
 ## Always-open event upgrade (006)
 
+For the story-title update, also apply `supabase/migrations/007_story_title_guard.sql` after 006 before deploying the app. This additive trigger allocates distinct titles within a round, even across concurrent workers, using a short numbered suffix only when a generated title collides. It does not rename existing entries or rescore them. It can be rerun safely; the API schema remains version 6.
+
 For an existing normalized deployment, take a private **Download database backup**, then apply `supabase/migrations/006_always_open_event.sql` after migrations 003, 004 and 005. Deploy this app version only after the SQL succeeds. For a legacy import, finish the import before applying 006.
 
 Migration 006 opens the current unfinished round without deleting entries or votes. If the current round already has published results, it preserves that round and its snapshot and creates a fresh open round, retaining voting settings. Historical voting codes stay with their original round; generate new codes if the fresh round requires them. Rerunning 006 does not create another round. Closing, publishing and manually replacing the active round are disabled; the current leaderboard stays live and CSV/backup exports remain available.
