@@ -1242,7 +1242,7 @@ function Admin() {
       </div>
     );
   const raw = data?.data;
-  const submissions: Story[] = raw?.submissions
+  const allSubmissions: (Story & { deleted?: boolean })[] = raw?.submissions
     ? raw.submissions.map((s: any) => ({
         id: s.id,
         title: s.title,
@@ -1258,9 +1258,18 @@ function Admin() {
         roundId: s.round_id,
       }))
     : raw?.rounds?.flatMap((r: any) => r.submissions) || [];
-  const jobs: any[] = raw?.jobs || [],
-    votes: any[] =
-      raw?.votes || raw?.rounds?.flatMap((r: any) => r.votes) || [];
+  const removedIds = new Set(
+    allSubmissions.filter((s) => s.deleted).map((s) => s.id),
+  );
+  const submissions = allSubmissions.filter((s) => !s.deleted);
+  const jobs: any[] = (raw?.jobs || []).filter(
+    (j: any) => !removedIds.has(j.submissionId || j.submission_id || j.id),
+  );
+  const votes: any[] = (
+    raw?.votes ||
+    raw?.rounds?.flatMap((r: any) => r.votes) ||
+    []
+  ).filter((v: any) => !removedIds.has(v.submissionId || v.submission_id));
   return (
     <div className="content admin">
       <div className="page-title">
@@ -1502,20 +1511,18 @@ function Admin() {
               {s.roundId === data?.round.id && (
                 <div className="actions">
                   <button
-                    disabled={
-                      busy || s.deleted || data?.round.state === "RESULTS"
-                    }
+                    disabled={busy || data?.round.state === "RESULTS"}
                     onClick={() =>
                       action(
                         "delete",
                         { submissionId: s.id },
                         t(
-                          "Remove this story from public view? The original record and votes remain in the backup.",
+                          "Remove this story from public view and the organiser dashboard? The original record and votes remain in the backup.",
                         ),
                       )
                     }
                   >
-                    {s.deleted ? t("Removed") : t("Remove story")}
+                    {t("Remove story")}
                   </button>
                   {s.legacy &&
                     s.judgingStatus === "pending" &&

@@ -3,6 +3,67 @@ import assert from "node:assert/strict";
 import { createAiService, RUBRIC, validateStory } from "../aiService.js";
 import { uniqueStoryTitle } from "../storyTitles.js";
 import { database } from "./database.mjs";
+import { characterNameSuggestions, storyInstruction } from "../aiPrompts.js";
+
+test("English and Chinese character suggestions vary while named ideas and comic payoffs stay in the instructions", async () => {
+  for (const language of ["en", "zh"]) {
+    const batches = Array.from({ length: 24 }, (_, offset) =>
+      characterNameSuggestions(language, offset),
+    );
+    assert.equal(new Set(batches.flat()).size, 24);
+    assert.equal(new Set(batches.map((batch) => batch[0])).size, 24);
+    for (const batch of batches) {
+      assert.equal(batch.length, 3);
+      assert.equal(new Set(batch).size, 3);
+      if (language === "zh")
+        assert.ok(batch.every((name) => /\p{Script=Han}/u.test(name)));
+    }
+    const instruction = storyInstruction(language);
+    assert.match(
+      instruction,
+      /Preserve any character names explicitly supplied/,
+    );
+    assert.match(instruction, /vary the comic engine/);
+    assert.match(instruction, /silently revise a flat or generic ending/);
+    const ai = createAiService(
+      { GEMINI_MODEL: "gemini-3.6-flash" },
+      {
+        client: {
+          models: {
+            async generateContent(request) {
+              const data = JSON.parse(request.contents);
+              assert.equal(data.idea, "A story about Captain Mango");
+              assert.equal(data.characterNameSuggestions.length, 3);
+              assert.equal(new Set(data.characterNameSuggestions).size, 3);
+              if (language === "zh")
+                assert.ok(
+                  data.characterNameSuggestions.every((name) =>
+                    /\p{Script=Han}/u.test(name),
+                  ),
+                );
+              return {
+                candidates: [{ finishReason: "STOP" }],
+                text: JSON.stringify(
+                  language === "zh"
+                    ? {
+                        title: "芒果船长",
+                        story: "芒果船长将船票当成了购物券。",
+                      }
+                    : {
+                        title: "Captain Mango",
+                        story:
+                          "Captain Mango mistook his ticket for a shopping voucher.",
+                      },
+                ),
+              };
+            },
+          },
+        },
+      },
+    );
+    await ai.generate({ prompt: "A story about Captain Mango", language });
+  }
+});
 
 test("two-decimal judging preserves weighted scoring and valid ties without trusting model totals", async () => {
   const requests = [];

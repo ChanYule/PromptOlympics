@@ -6,6 +6,7 @@ import {
   JUDGE_PROMPT,
   STORY_SCHEMA,
   JUDGE_SCHEMA,
+  characterNameSuggestions,
 } from "./aiPrompts.js";
 export const RUBRIC = "humour-50-creativity-25-relevance-25-v3";
 export function validateStory(value, language = "en") {
@@ -133,6 +134,7 @@ export function createAiService(
           challenge: input.theme || "Creative Story",
           newVersion: !!input.regenerate,
           avoidTitles: (input.avoidTitles || []).slice(0, 80),
+          characterNameSuggestions: characterNameSuggestions(input.language),
         }),
         storyInstruction(input.language),
         STORY_SCHEMA,

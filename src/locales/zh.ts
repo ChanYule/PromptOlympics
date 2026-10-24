@@ -368,8 +368,8 @@ export const zh: Record<string, string> = {
   "View stored rankings": "查看已保存的排名",
   "Review submissions": "查看参赛故事",
   "Read story and idea": "阅读故事与原始点子",
-  "Remove this story from public view? The original record and votes remain in the backup.":
-    "确定从公开列表中移除此故事吗？原始记录和投票仍会保留在备份中。",
+  "Remove this story from public view and the organiser dashboard? The original record and votes remain in the backup.":
+    "确定从公开列表和主办方管理页面中移除此故事吗？原始记录和投票仍会保留在备份中。",
   Removed: "已移除",
   "Remove story": "移除故事",
   "Judge this historical story that has no stored score? This authorised operation is audited. Existing completed scores are preserved.":
