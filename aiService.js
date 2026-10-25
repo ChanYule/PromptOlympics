@@ -95,7 +95,9 @@ export function createAiService(
           responseMimeType: "application/json",
           responseJsonSchema: schema,
           ...(usesDeprecatedSampling(model) ? {} : { temperature }),
-          maxOutputTokens: 768,
+          // Thinking shares the output allowance; keep room for complete JSON,
+          // especially a Chinese story. Story length checks still apply below.
+          maxOutputTokens: schema === STORY_SCHEMA ? 2048 : 1024,
           ...(model.startsWith("gemini-3")
             ? { thinkingConfig: { thinkingLevel: "minimal" } }
             : {}),
@@ -103,8 +105,15 @@ export function createAiService(
         },
       });
       if (response.candidates?.[0]?.finishReason !== "STOP")
-        throw new Error("The AI response was blocked or incomplete.");
-      return JSON.parse(response.text || "");
+        throw Object.assign(
+          new Error("The AI response was blocked or incomplete."),
+          {
+            aiFinishReason: response.candidates?.[0]?.finishReason,
+          },
+        );
+      const responseText = response.text || "";
+      if (!responseText.trim()) throw new Error("The AI response was empty.");
+      return JSON.parse(responseText);
     } finally {
       clearTimeout(timer);
     }
@@ -247,6 +256,9 @@ export function startWorker(
         code: failure.code,
         status: failure.status,
         retryable: failure.retryable,
+        ...(failure.code === "INVALID_RESPONSE"
+          ? { reason: failure.reason, finishReason: failure.finishReason }
+          : {}),
         attempt: job.submissionId ? job.judgeAttempts : job.attempts,
         model: /^gemini-[a-z0-9._-]{1,100}$/i.test(ai.model || "")
           ? ai.model

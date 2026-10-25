@@ -89,11 +89,49 @@ export function classifyGeminiError(error) {
       "We could not connect to Gemini. Please try again shortly.",
       true,
     );
-  return result(
-    "INVALID_RESPONSE",
-    "The AI response could not be validated. Please contact an organiser.",
-    true,
-  );
+  const reasons = {
+    "The AI response was empty.": "EMPTY_RESPONSE",
+    "Invalid story response.": "STORY_SCHEMA",
+    "The story did not meet the length requirements.":
+      "STORY_LENGTH_OR_LANGUAGE",
+    "This idea could not produce a story suitable for a public event.":
+      "PUBLIC_SAFETY",
+    "Invalid judging response.": "JUDGING_SCHEMA_OR_SCORE",
+    "Incomplete judging response.": "JUDGING_EXPLANATION",
+    "The AI response was blocked or incomplete.": "INCOMPLETE_RESPONSE",
+  };
+  // Only allow known enum values into logs. Never include provider text or JSON.
+  const finishReason = [
+    "STOP",
+    "MAX_TOKENS",
+    "SAFETY",
+    "RECITATION",
+    "OTHER",
+    "BLOCKLIST",
+    "PROHIBITED_CONTENT",
+    "SPII",
+    "MALFORMED_FUNCTION_CALL",
+    "IMAGE_SAFETY",
+    "UNEXPECTED_TOOL_CALL",
+  ].includes(error?.aiFinishReason)
+    ? error.aiFinishReason
+    : null;
+  return {
+    ...result(
+      "INVALID_RESPONSE",
+      "The AI response could not be validated. Please contact an organiser.",
+      true,
+    ),
+    reason:
+      finishReason === "MAX_TOKENS"
+        ? "OUTPUT_TOKEN_LIMIT"
+        : error instanceof SyntaxError
+          ? "MALFORMED_JSON"
+          : Object.hasOwn(reasons, error?.message || "")
+            ? reasons[error.message]
+            : "UNKNOWN",
+    finishReason,
+  };
 }
 export function usesDeprecatedSampling(model) {
   const match = /^gemini-(\d+)(?:\.(\d+))?/.exec(model);

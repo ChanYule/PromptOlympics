@@ -119,3 +119,56 @@ test("worker records a distinct safe failure and sanitized diagnostic for upstre
     worker.stop();
   }
 });
+
+test("worker logs allowlisted response diagnostics without the provider body", async () => {
+  const diagnostics = [];
+  let claimed = false,
+    finish;
+  const failed = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const repository = {
+    async call(action, payload) {
+      if (action === "leaderboard") return { entries: [] };
+      if (action === "claim") {
+        if (claimed) return null;
+        claimed = true;
+        return {
+          id: "response-job",
+          leaseToken: "token",
+          input: { prompt: "private prompt" },
+          attempts: 1,
+          judgeAttempts: 0,
+        };
+      }
+      if (action === "fail") finish(payload);
+      return {};
+    },
+  };
+  const worker = startWorker(
+    repository,
+    {
+      model: "gemini-3.6-flash",
+      async generate() {
+        throw Object.assign(
+          new Error("The AI response was blocked or incomplete."),
+          {
+            aiFinishReason: "MAX_TOKENS",
+            privateBody: "private provider output",
+          },
+        );
+      },
+    },
+    { onDiagnostic: (details) => diagnostics.push(details) },
+  );
+  try {
+    const failure = await failed;
+    assert.equal(failure.retryable, true);
+    assert.equal(diagnostics[0].reason, "OUTPUT_TOKEN_LIMIT");
+    assert.equal(diagnostics[0].finishReason, "MAX_TOKENS");
+    assert.equal(diagnostics[0].attempt, 1);
+    assert.equal(JSON.stringify(diagnostics).includes("private"), false);
+  } finally {
+    worker.stop();
+  }
+});
